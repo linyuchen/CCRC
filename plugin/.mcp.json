@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "ccrc": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/channel.cjs"],
+      "env": {
+        "CCRC_QQ_APP_ID": "${user_config.qq_app_id}",
+        "CCRC_QQ_APP_SECRET": "${user_config.qq_app_secret}",
+        "CCRC_QQ_ALLOWED_SENDERS": "${user_config.qq_allowed_senders}"
+      }
+    }
+  }
+}

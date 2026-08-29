@@ -1,0 +1,33 @@
+{
+  "name": "ccrc",
+  "version": "0.3.8",
+  "description": "Route external messages into live Claude Code sessions and mirror visible responses back.",
+  "author": {
+    "name": "ClaudeCodeRemoteControl contributors"
+  },
+  "homepage": "https://github.com/linyuchen/ClaudeCodeRemoteControl",
+  "license": "MIT",
+  "userConfig": {
+    "qq_app_id": {
+      "type": "string",
+      "title": "QQ Bot App ID",
+      "description": "Optional when ~/.ccrc/config.json supplies it."
+    },
+    "qq_app_secret": {
+      "type": "string",
+      "title": "QQ Bot App Secret",
+      "description": "Optional when ~/.ccrc/config.json supplies it.",
+      "sensitive": true
+    },
+    "qq_allowed_senders": {
+      "type": "string",
+      "title": "Allowed QQ OpenIDs",
+      "description": "Comma-separated sender OpenIDs. Use * only for deliberate unrestricted access."
+    }
+  },
+  "channels": [
+    {
+      "server": "ccrc"
+    }
+  ]
+}

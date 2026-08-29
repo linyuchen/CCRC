@@ -1,0 +1,15 @@
+{
+  "name": "ccrc-local",
+  "owner": {
+    "name": "ClaudeCodeRemoteControl contributors"
+  },
+  "description": "Local marketplace for the ClaudeCodeRemoteControl Claude Code channel plugin.",
+  "plugins": [
+    {
+      "name": "ccrc",
+      "source": "./plugin",
+      "description": "Remote control and response mirroring for live Claude Code sessions",
+      "version": "0.3.8"
+    }
+  ]
+}

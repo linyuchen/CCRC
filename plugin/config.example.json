@@ -1,0 +1,22 @@
+{
+  "broker": {
+    "host": "127.0.0.1",
+    "port": 43921,
+    "autoStart": true,
+    "mirrorLocalReplies": true
+  },
+  "platforms": [
+    {
+      "type": "qqbot",
+      "id": "qqbot",
+      "enabled": true,
+      "appId": "YOUR_QQ_BOT_APP_ID",
+      "appSecret": "YOUR_QQ_BOT_APP_SECRET",
+      "sandbox": false,
+      "allowedSenders": ["YOUR_QQ_OPENID"],
+      "allowedConversations": [],
+      "shareGroupSession": false,
+      "markdown": true
+    }
+  ]
+}

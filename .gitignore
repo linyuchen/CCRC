@@ -1,0 +1,14 @@
+node_modules/
+coverage/
+*.log
+.DS_Store
+plugin/dist/*.map
+.env
+.env.*
+.claude/
+.ccrc/
+config.json
+*.pem
+*.key
+
+# dist is intentionally committed: Claude Code can run the plugin without a build step.

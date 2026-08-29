@@ -1,0 +1,37 @@
+{
+  "name": "claude-code-remote-control",
+  "version": "0.3.8",
+  "description": "Multi-platform remote control and response mirroring for live Claude Code sessions",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "ccrc": "bin/ccrc"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.mjs\" \"*.json\" \"plugin/**/*.json\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.mjs\" \"*.json\" \"plugin/**/*.json\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:broker": "tsx src/broker/main.ts serve",
+    "dev:channel": "tsx src/channel/main.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.4",
+    "ws": "^8.18.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.25.9",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
