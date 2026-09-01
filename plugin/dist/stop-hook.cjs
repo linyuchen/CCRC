@@ -4209,6 +4209,9 @@ async function readOrCreateBrokerToken(paths) {
 // src/hooks/transcript.ts
 var import_promises3 = require("node:fs/promises");
 var MAX_TRANSCRIPT_TAIL_BYTES = 8 * 1024 * 1024;
+var SYNTHETIC_MODEL = "<synthetic>";
+var MAX_TOOL_DETAIL_LINES = 10;
+var MAX_TOOL_DETAIL_CHARS = 200;
 async function readLastAssistantResponse(transcriptPath, sessionId) {
   const fileStat = await (0, import_promises3.stat)(transcriptPath);
   const start = Math.max(0, fileStat.size - MAX_TRANSCRIPT_TAIL_BYTES);
@@ -4225,6 +4228,8 @@ async function readLastAssistantResponse(transcriptPath, sessionId) {
   const lines = content.split("\n");
   if (start > 0) lines.shift();
   const title = findSessionTitle(lines, sessionId);
+  let newest;
+  const blocks = [];
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index]?.trim();
     if (!line) continue;
@@ -4234,23 +4239,35 @@ async function readLastAssistantResponse(transcriptPath, sessionId) {
     } catch {
       continue;
     }
-    if (record.type !== "assistant" || record.message?.role !== "assistant" || record.isSidechain)
+    if (record.type !== "assistant" || record.message?.role !== "assistant" || record.isSidechain || record.isApiErrorMessage || record.message?.model === SYNTHETIC_MODEL)
       continue;
     const recordSessionId = record.sessionId ?? record.session_id;
     if (recordSessionId && recordSessionId !== sessionId) continue;
-    const text = assistantText(record.message.content);
-    if (!text) return void 0;
-    const messageId = record.uuid ?? record.message.id;
-    if (!messageId) continue;
-    return {
-      messageId,
-      text,
-      origin: findTurnOrigin(lines, index - 1, sessionId),
-      ...title ? { title } : {},
-      ...record.cwd ? { projectDir: record.cwd } : {}
-    };
+    if (newest && !sameAssistantMessage(newest.record, record)) break;
+    blocks.unshift(...contentBlocks(record.message.content));
+    newest ??= { record, index };
+    if (!record.message.id) break;
   }
-  return void 0;
+  if (!newest) return void 0;
+  const text = assistantText(blocks);
+  if (!text) return void 0;
+  const messageId = newest.record.message?.id ?? newest.record.uuid;
+  if (!messageId) return void 0;
+  return {
+    messageId,
+    text,
+    origin: findTurnOrigin(lines, newest.index - 1, sessionId),
+    ...title ? { title } : {},
+    ...newest.record.cwd ? { projectDir: newest.record.cwd } : {}
+  };
+}
+function sameAssistantMessage(newest, older) {
+  const id = newest.message?.id;
+  return Boolean(id) && id === older.message?.id;
+}
+function contentBlocks(content) {
+  if (typeof content === "string") return [{ type: "text", text: content }];
+  return Array.isArray(content) ? content : [];
 }
 function findSessionTitle(lines, sessionId) {
   for (let index = lines.length - 1; index >= 0; index -= 1) {
@@ -4300,14 +4317,64 @@ function assistantText(content) {
   const text = blocks.filter(
     (block) => block.type === "text" && typeof block.text === "string"
   ).map((block) => block.text).join("\n").trim();
-  const toolNames = blocks.filter(
+  const toolUses = blocks.filter(
     (block) => block.type === "tool_use"
-  ).map((block) => block.name?.trim() ?? "");
-  if (!text || toolNames.length === 0) return text;
-  const activity = toolActivity(toolNames);
+  );
+  if (toolUses.length === 0) return text;
+  const activity = toolActivity(
+    toolUses.map((block) => block.name?.trim() ?? "")
+  );
+  const quoted = [activity, ...toolDetails(toolUses)].map((line) => `> ${line}`).join("\n");
   return text ? `${text}
 
-> ${activity}` : `> ${activity}`;
+${quoted}` : quoted;
+}
+var TOOL_DETAIL_KEYS = [
+  "command",
+  "file_path",
+  "notebook_path",
+  "pattern",
+  "url",
+  "query",
+  "description",
+  "question",
+  "plan",
+  "prompt",
+  "text",
+  "path",
+  "skill"
+];
+function toolDetails(blocks) {
+  const labeled = blocks.length > 1;
+  const lines = blocks.flatMap((block) => toolDetailLines(block, labeled));
+  if (lines.length <= MAX_TOOL_DETAIL_LINES) return lines;
+  return [...lines.slice(0, MAX_TOOL_DETAIL_LINES), "\u2026"];
+}
+function toolDetailLines(block, labeled) {
+  const name = block.name?.trim() || "\u5DE5\u5177";
+  const detail = toolDetailText(block.input);
+  if (!detail) return labeled ? [name] : [];
+  return (labeled ? `${name}: ${detail}` : detail).split("\n").map(clampDetailLine);
+}
+function toolDetailText(input) {
+  if (typeof input === "string") return input.trim();
+  if (!input || typeof input !== "object") return "";
+  const fields = input;
+  for (const key of TOOL_DETAIL_KEYS) {
+    const value = fields[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  for (const value of Object.values(fields))
+    if (typeof value === "string" && value.trim()) return value.trim();
+  const json = JSON.stringify(fields);
+  return !json || json === "{}" ? "" : json;
+}
+function shortToolName(toolName) {
+  const parts = toolName.split("__").filter(Boolean);
+  return parts[parts.length - 1] ?? toolName;
+}
+function clampDetailLine(line) {
+  return line.length > MAX_TOOL_DETAIL_CHARS ? `${line.slice(0, MAX_TOOL_DETAIL_CHARS)}\u2026` : line;
 }
 function toolActivity(toolNames) {
   if (toolNames.length > 1) return `\u6B63\u5728\u5E76\u884C\u6267\u884C ${toolNames.length} \u9879\u64CD\u4F5C\u2026`;
@@ -4321,7 +4388,7 @@ function toolActivity(toolNames) {
   if (toolName === "WebFetch" || toolName === "WebSearch")
     return "\u6B63\u5728\u67E5\u8BE2\u8D44\u6599\u2026";
   if (toolName === "Task" || toolName === "Agent") return "\u6B63\u5728\u5904\u7406\u5B50\u4EFB\u52A1\u2026";
-  return "\u6B63\u5728\u8C03\u7528\u5DE5\u5177\u2026";
+  return toolName ? `\u6B63\u5728\u8C03\u7528 ${shortToolName(toolName)}\u2026` : "\u6B63\u5728\u8C03\u7528\u5DE5\u5177\u2026";
 }
 function userText(content) {
   if (typeof content === "string") return content.trim();

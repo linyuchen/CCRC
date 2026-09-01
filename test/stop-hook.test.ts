@@ -52,7 +52,7 @@ describe("Stop hook", () => {
     });
   });
 
-  it("adds a friendly activity hint without exposing tool input", async () => {
+  it("adds an activity hint followed by the tool detail", async () => {
     const transcript = await transcriptFile([
       { type: "user", message: { role: "user", content: "检查一下" } },
       {
@@ -76,11 +76,117 @@ describe("Stop hook", () => {
     await expect(
       readLastAssistantResponse(transcript, "session-a"),
     ).resolves.toMatchObject({
-      text: "我来检查：\n\n> 正在执行命令…",
+      text: "我来检查：\n\n> 正在执行命令…\n> secret-command --token hidden",
     });
   });
 
-  it("does not mirror a tool-only assistant message or repeat older text", async () => {
+  it("truncates tool detail beyond ten lines with an ellipsis", async () => {
+    const command = Array.from({ length: 15 }, (_, i) => `line ${i + 1}`).join(
+      "\n",
+    );
+    const transcript = await transcriptFile([
+      { type: "user", message: { role: "user", content: "跑一下" } },
+      {
+        type: "assistant",
+        uuid: "assistant-long-command",
+        sessionId: "session-a",
+        message: {
+          role: "assistant",
+          content: [{ type: "tool_use", name: "Bash", input: { command } }],
+        },
+      },
+    ]);
+
+    const response = await readLastAssistantResponse(transcript, "session-a");
+    expect(response?.text).toBe(
+      [
+        "> 正在执行命令…",
+        "> line 1",
+        ...Array.from({ length: 9 }, (_, i) => `> line ${i + 2}`),
+        "> …",
+      ].join("\n"),
+    );
+    // 10 detail lines + the hint, never the remaining 5.
+    expect(response?.text).not.toContain("line 11");
+  });
+
+  it("names an unrecognized tool and still shows its detail", async () => {
+    const transcript = await transcriptFile([
+      { type: "user", message: { role: "user", content: "回一下" } },
+      {
+        type: "assistant",
+        uuid: "assistant-mcp",
+        sessionId: "session-a",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              name: "mcp__plugin_ccrc_ccrc__reply",
+              input: { route_id: "ec68a8b6", text: "已收到" },
+            },
+          ],
+        },
+      },
+    ]);
+
+    await expect(
+      readLastAssistantResponse(transcript, "session-a"),
+    ).resolves.toMatchObject({ text: "> 正在调用 reply…\n> 已收到" });
+  });
+
+  it("falls back to compact JSON for tool input with no string field", async () => {
+    const transcript = await transcriptFile([
+      { type: "user", message: { role: "user", content: "记一下" } },
+      {
+        type: "assistant",
+        uuid: "assistant-todo",
+        sessionId: "session-a",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              name: "TodoWrite",
+              input: { todos: [{ content: "写测试", status: "pending" }] },
+            },
+          ],
+        },
+      },
+    ]);
+
+    await expect(
+      readLastAssistantResponse(transcript, "session-a"),
+    ).resolves.toMatchObject({
+      text: '> 正在调用 TodoWrite…\n> {"todos":[{"content":"写测试","status":"pending"}]}',
+    });
+  });
+
+  it("clips a detail line longer than the character cap", async () => {
+    const transcript = await transcriptFile([
+      { type: "user", message: { role: "user", content: "跑一下" } },
+      {
+        type: "assistant",
+        uuid: "assistant-long-line",
+        sessionId: "session-a",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              name: "Bash",
+              input: { command: "x".repeat(500) },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const response = await readLastAssistantResponse(transcript, "session-a");
+    expect(response?.text).toBe(`> 正在执行命令…\n> ${"x".repeat(200)}…`);
+  });
+
+  it("mirrors a tool-only assistant message as an activity hint alone", async () => {
     const transcript = await transcriptFile([
       { type: "user", message: { role: "user", content: "继续" } },
       {
@@ -114,9 +220,163 @@ describe("Stop hook", () => {
       },
     ]);
 
+    // The hint stands alone — the already-sent text above must not come back.
+    await expect(
+      readLastAssistantResponse(transcript, "session-a"),
+    ).resolves.toEqual({
+      messageId: "assistant-tools-only",
+      text: "> 正在并行执行 2 项操作…\n> Read: /secret\n> Grep: secret",
+      origin: "local",
+    });
+  });
+
+  it("skips synthetic placeholder turns and falls back to the real reply", async () => {
+    const transcript = await transcriptFile([
+      { type: "user", message: { role: "user", content: "问我几个问题" } },
+      {
+        type: "assistant",
+        uuid: "assistant-real",
+        sessionId: "session-a",
+        message: {
+          role: "assistant",
+          model: "claude-opus-5",
+          content: [{ type: "text", text: "好的，我来问你几个问题" }],
+        },
+      },
+      {
+        type: "assistant",
+        uuid: "assistant-synthetic",
+        sessionId: "session-a",
+        message: {
+          role: "assistant",
+          model: "<synthetic>",
+          content: [{ type: "text", text: "No response requested." }],
+        },
+      },
+    ]);
+
+    await expect(
+      readLastAssistantResponse(transcript, "session-a"),
+    ).resolves.toMatchObject({
+      messageId: "assistant-real",
+      text: "好的，我来问你几个问题",
+    });
+  });
+
+  it("skips API error turns", async () => {
+    const transcript = await transcriptFile([
+      { type: "user", message: { role: "user", content: "继续" } },
+      {
+        type: "assistant",
+        uuid: "assistant-api-error",
+        sessionId: "session-a",
+        isApiErrorMessage: true,
+        message: {
+          role: "assistant",
+          model: "<synthetic>",
+          content: [
+            { type: "text", text: "There's an issue with the selected model" },
+          ],
+        },
+      },
+    ]);
+
     await expect(
       readLastAssistantResponse(transcript, "session-a"),
     ).resolves.toBeUndefined();
+  });
+
+  it("merges an assistant message split across per-block records", async () => {
+    const transcript = await transcriptFile([
+      { type: "user", message: { role: "user", content: "继续" } },
+      {
+        type: "assistant",
+        uuid: "block-older-text",
+        sessionId: "session-a",
+        message: {
+          id: "msg_older",
+          role: "assistant",
+          content: [{ type: "text", text: "上一条消息的文字" }],
+        },
+      },
+      {
+        type: "assistant",
+        uuid: "block-thinking",
+        sessionId: "session-a",
+        message: {
+          id: "msg_newest",
+          role: "assistant",
+          content: [{ type: "thinking", thinking: "private" }],
+        },
+      },
+      {
+        type: "assistant",
+        uuid: "block-text",
+        sessionId: "session-a",
+        cwd: "/work/pmhq",
+        message: {
+          id: "msg_newest",
+          role: "assistant",
+          content: [{ type: "text", text: "我来查一下" }],
+        },
+      },
+      {
+        type: "assistant",
+        uuid: "block-tool",
+        sessionId: "session-a",
+        cwd: "/work/pmhq",
+        message: {
+          id: "msg_newest",
+          role: "assistant",
+          content: [
+            { type: "tool_use", name: "Bash", input: { command: "secret" } },
+          ],
+        },
+      },
+    ]);
+
+    await expect(
+      readLastAssistantResponse(transcript, "session-a"),
+    ).resolves.toEqual({
+      messageId: "msg_newest",
+      text: "我来查一下\n\n> 正在执行命令…\n> secret",
+      origin: "local",
+      projectDir: "/work/pmhq",
+    });
+  });
+
+  it("hints activity without merging text from an earlier split message", async () => {
+    const transcript = await transcriptFile([
+      { type: "user", message: { role: "user", content: "继续" } },
+      {
+        type: "assistant",
+        uuid: "block-older-text",
+        sessionId: "session-a",
+        message: {
+          id: "msg_older",
+          role: "assistant",
+          content: [{ type: "text", text: "已经发过的文字" }],
+        },
+      },
+      {
+        type: "assistant",
+        uuid: "block-tool-only",
+        sessionId: "session-a",
+        message: {
+          id: "msg_newest",
+          role: "assistant",
+          content: [{ type: "tool_use", name: "Read", input: {} }],
+        },
+      },
+    ]);
+
+    await expect(
+      readLastAssistantResponse(transcript, "session-a"),
+    ).resolves.toEqual({
+      messageId: "msg_newest",
+      text: "> 正在读取文件…",
+      origin: "local",
+    });
   });
 
   it("posts the completed response to the authenticated Broker endpoint", async () => {

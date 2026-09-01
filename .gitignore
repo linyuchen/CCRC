@@ -12,3 +12,4 @@ config.json
 *.key
 
 # dist is intentionally committed: Claude Code can run the plugin without a build step.
+.tmp-analysis/
