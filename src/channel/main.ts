@@ -14,6 +14,7 @@ import { loadConfig } from "../core/config.js";
 import { createLogger } from "../core/logger.js";
 import { readOrCreateBrokerToken, resolvePaths } from "../core/paths.js";
 import type { BrokerMessage, SessionMetadata } from "../core/protocol.js";
+import { formatHandoffCommand } from "../core/shell.js";
 import { BrokerClient } from "./broker-client.js";
 import { formatChannelMessage } from "./channel-message.js";
 
@@ -42,7 +43,7 @@ async function main(): Promise<void> {
   };
 
   const mcp = new Server(
-    { name: "ccrc", version: "0.3.8" },
+    { name: "ccrc", version: "0.3.10" },
     {
       capabilities: {
         experimental: {
@@ -202,7 +203,11 @@ async function main(): Promise<void> {
         dirname(process.argv[1] ?? process.cwd()),
         "cli.cjs",
       );
-      const command = `${shellQuote(process.execPath)} ${shellQuote(cliEntry)} resume ${shellQuote(sessionId)}`;
+      const command = formatHandoffCommand(
+        process.execPath,
+        cliEntry,
+        sessionId,
+      );
       return {
         content: [
           {
@@ -292,10 +297,6 @@ async function main(): Promise<void> {
         params: { request_id: message.requestId, behavior: message.behavior },
       });
     }
-  }
-
-  function shellQuote(value: string): string {
-    return `'${value.replaceAll("'", "'\\''")}'`;
   }
 
   async function channelWasEnabledAtStartup(): Promise<boolean> {

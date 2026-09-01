@@ -22188,6 +22188,29 @@ async function readOrCreateBrokerToken(paths) {
   }
 }
 
+// src/core/shell.ts
+function formatHandoffCommand(nodePath, cliEntry, sessionId, platform = process.platform) {
+  if (platform === "win32") {
+    return [
+      "PowerShell:",
+      `& ${powerShellQuote(nodePath)} ${powerShellQuote(cliEntry)} resume ${powerShellQuote(sessionId)}`,
+      "",
+      "CMD:",
+      `${commandPromptQuote(nodePath)} ${commandPromptQuote(cliEntry)} resume ${commandPromptQuote(sessionId)}`
+    ].join("\n");
+  }
+  return `${posixQuote(nodePath)} ${posixQuote(cliEntry)} resume ${posixQuote(sessionId)}`;
+}
+function posixQuote(value) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+function powerShellQuote(value) {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+function commandPromptQuote(value) {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
 // src/channel/broker-client.ts
 var import_node_fs2 = require("node:fs");
 var import_node_path2 = require("node:path");
@@ -22557,11 +22580,18 @@ async function ensureBroker(config2, paths, token, logger) {
     throw new Error("broker is offline and autoStart is disabled");
   const brokerEntry = resolveBrokerEntry();
   const logFd = (0, import_node_fs2.openSync)(paths.log, "a", 384);
-  const child = (0, import_node_child_process.spawn)(process.execPath, [brokerEntry, "serve"], {
-    detached: true,
-    stdio: ["ignore", logFd, logFd],
-    env: process.env
-  });
+  const child = (() => {
+    try {
+      return (0, import_node_child_process.spawn)(process.execPath, [brokerEntry, "serve"], {
+        detached: true,
+        windowsHide: true,
+        stdio: ["ignore", logFd, logFd],
+        env: process.env
+      });
+    } finally {
+      (0, import_node_fs2.closeSync)(logFd);
+    }
+  })();
   child.unref();
   logger.info("started broker process", { pid: child.pid, log: paths.log });
   const deadline = Date.now() + 1e4;
@@ -22609,7 +22639,7 @@ async function main() {
     pid: process.pid
   };
   const mcp = new Server(
-    { name: "ccrc", version: "0.3.8" },
+    { name: "ccrc", version: "0.3.10" },
     {
       capabilities: {
         experimental: {
@@ -22754,7 +22784,11 @@ async function main() {
         (0, import_node_path3.dirname)(process.argv[1] ?? process.cwd()),
         "cli.cjs"
       );
-      const command = `${shellQuote(process.execPath)} ${shellQuote(cliEntry)} resume ${shellQuote(sessionId)}`;
+      const command = formatHandoffCommand(
+        process.execPath,
+        cliEntry,
+        sessionId
+      );
       return {
         content: [
           {
@@ -22839,9 +22873,6 @@ async function main() {
         params: { request_id: message.requestId, behavior: message.behavior }
       });
     }
-  }
-  function shellQuote(value) {
-    return `'${value.replaceAll("'", "'\\''")}'`;
   }
   async function channelWasEnabledAtStartup() {
     if (process.env.CCRC_CHANNEL_ACTIVE === "1") return true;

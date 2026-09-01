@@ -174,11 +174,11 @@ describe("Broker", () => {
     );
     expect(fromHookOnlySession).toMatchObject({
       ok: true,
-      delivered: true,
-      deliveredTargets: 1,
+      delivered: false,
+      reason: "channel-not-connected",
     });
-    expect(fixture.platform.sent.at(-1)?.text).toBe(
-      "普通 Claude 会话也完成了\n\n---\n**会话：** 未启用 Channel 的会话\n**目录：** `/work/plain`",
+    expect(fixture.platform.sent.at(-1)?.text).toContain(
+      "**会话：** 处理第一个项目",
     );
 
     await waitUntil(async () => {
@@ -322,6 +322,12 @@ describe("Broker", () => {
 
   it("bridges native AskUserQuestion answers through sequential QQ buttons", async () => {
     const fixture = await createFixture();
+    const client = await connectSession(
+      fixture.port,
+      fixture.token,
+      session("session-native", "/work/native"),
+    );
+    cleanups.push(async () => client.close());
     await fixture.platform.emit(externalMessage("/current"));
 
     const answerRequest = postAskUserQuestion(fixture.port, fixture.token, {
@@ -412,8 +418,35 @@ describe("Broker", () => {
     });
   });
 
+  it("does not bridge AskUserQuestion without an active Channel", async () => {
+    const fixture = await createFixture();
+    const result = await postAskUserQuestion(fixture.port, fixture.token, {
+      sessionId: "session-without-channel",
+      requestId: "tool-use-without-channel",
+      projectDir: "/work/plain",
+      questions: [
+        {
+          question: "继续吗？",
+          options: [{ label: "继续" }, { label: "取消" }],
+        },
+      ],
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Claude session does not have an active CCRC Channel",
+    });
+    expect(fixture.platform.sent).toEqual([]);
+  });
+
   it("cancels a pending QQ choice when the native picker wins", async () => {
     const fixture = await createFixture();
+    const client = await connectSession(
+      fixture.port,
+      fixture.token,
+      session("session-native", "/work/native"),
+    );
+    cleanups.push(async () => client.close());
     await fixture.platform.emit(externalMessage("/current"));
 
     const answerRequest = postAskUserQuestion(fixture.port, fixture.token, {

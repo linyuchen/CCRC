@@ -44,5 +44,5 @@ await Promise.all([
 await Promise.all([
   copyFile("config.example.json", "plugin/config.example.json"),
   copyFile("LICENSE", "plugin/LICENSE"),
-  chmod("bin/ccrc", 0o755),
+  chmod("bin/ccrc", 0o755).catch(() => undefined),
 ]);

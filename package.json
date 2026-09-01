@@ -1,17 +1,17 @@
 {
   "name": "claude-code-remote-control",
-  "version": "0.3.8",
+  "version": "0.3.10",
   "description": "Multi-platform remote control and response mirroring for live Claude Code sessions",
   "type": "module",
   "private": true,
   "bin": {
-    "ccrc": "bin/ccrc"
+    "ccrc": "plugin/dist/cli.cjs"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "tsc --noEmit",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.mjs\" \"*.json\" \"plugin/**/*.json\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.mjs\" \"*.json\" \"plugin/**/*.json\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.mjs\" \"*.json\" \"plugin/**/*.json\" \"README.md\" \".github/**/*.yml\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.mjs\" \"*.json\" \"plugin/**/*.json\" \"README.md\" \".github/**/*.yml\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev:broker": "tsx src/broker/main.ts serve",
@@ -22,10 +22,12 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.4",
+    "cross-spawn": "^7.0.6",
     "ws": "^8.18.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
     "@types/node": "^24.3.0",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.25.9",

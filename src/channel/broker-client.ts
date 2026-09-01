@@ -1,4 +1,4 @@
-import { openSync } from "node:fs";
+import { closeSync, openSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import WebSocket, { type RawData } from "ws";
@@ -338,11 +338,18 @@ export async function ensureBroker(
 
   const brokerEntry = resolveBrokerEntry();
   const logFd = openSync(paths.log, "a", 0o600);
-  const child = spawn(process.execPath, [brokerEntry, "serve"], {
-    detached: true,
-    stdio: ["ignore", logFd, logFd],
-    env: process.env,
-  });
+  const child = (() => {
+    try {
+      return spawn(process.execPath, [brokerEntry, "serve"], {
+        detached: true,
+        windowsHide: true,
+        stdio: ["ignore", logFd, logFd],
+        env: process.env,
+      });
+    } finally {
+      closeSync(logFd);
+    }
+  })();
   child.unref();
   logger.info("started broker process", { pid: child.pid, log: paths.log });
 

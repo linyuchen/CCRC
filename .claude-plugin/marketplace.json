@@ -9,7 +9,7 @@
       "name": "ccrc",
       "source": "./plugin",
       "description": "Remote control and response mirroring for live Claude Code sessions",
-      "version": "0.3.8"
+      "version": "0.3.10"
     }
   ]
 }

@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Node 20 on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+
+      - name: Smoke-test Unix launcher
+        if: runner.os != 'Windows'
+        run: ./bin/ccrc help
+
+      - name: Smoke-test Windows npm shim
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npm link
+          ccrc.cmd help
+          $init = (ccrc.cmd shell-init powershell) -join "`n"
+          Invoke-Expression $init
+          if ((Get-Command claude).CommandType -ne "Function") {
+            throw "PowerShell wrapper was not installed"
+          }

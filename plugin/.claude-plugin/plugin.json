@@ -1,6 +1,6 @@
 {
   "name": "ccrc",
-  "version": "0.3.8",
+  "version": "0.3.10",
   "description": "Route external messages into live Claude Code sessions and mirror visible responses back.",
   "author": {
     "name": "ClaudeCodeRemoteControl contributors"

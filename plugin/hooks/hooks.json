@@ -7,7 +7,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/stop-hook.cjs\"",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/dist/stop-hook.cjs"],
             "timeout": 10
           }
         ]
@@ -19,7 +20,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/ask-user-hook.cjs\"",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/dist/ask-user-hook.cjs"],
             "timeout": 1800
           }
         ]
@@ -31,7 +33,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/ask-user-hook.cjs\"",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/dist/ask-user-hook.cjs"],
             "timeout": 5
           }
         ]
@@ -41,7 +44,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/stop-hook.cjs\"",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/dist/stop-hook.cjs"],
             "timeout": 10
           }
         ]
@@ -52,7 +56,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/stop-hook.cjs\"",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/dist/stop-hook.cjs"],
             "timeout": 10
           }
         ]

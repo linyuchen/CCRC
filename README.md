@@ -10,12 +10,12 @@ ClaudeCodeRemoteControl，简称 CCRC，用来从 QQ 远程操作正在运行的
 
 - 在 QQ 中查看并切换本机在线的 Claude Code 会话。
 - 从 QQ 给指定会话发送任务。
-- 把所有会话的回复同步到 QQ，包括从本地终端发起的任务。
+- 把所有已连接 CCRC Channel 的会话回复同步到 QQ，包括从本地终端发起的任务。
 - 把权限确认和 `AskUserQuestion` 转成 QQ 按钮，同时保留 Claude 终端里的原生选择框。
 - 使用 QQ Markdown 显示回复，并在消息底部标出会话标题和工作目录。
 - 隐藏工具的具体命令和参数，只在 Claude 本身有说明文字时显示简短的执行状态。纯工具调用不会单独推送。
 
-`/session` 选择的只是“QQ 下一条消息发给谁”。它不会过滤其他会话的输出。
+`/session` 选择的只是“QQ 下一条消息发给谁”。它不会过滤其他在线 Channel 会话的输出。
 
 ## 运行条件
 
@@ -23,6 +23,8 @@ ClaudeCodeRemoteControl，简称 CCRC，用来从 QQ 远程操作正在运行的
 - Claude Code 2.1.247 或更高版本，建议使用最新版
 - 可以使用 Claude Code Channels 的账号或组织
 - QQ 开放平台创建的官方机器人，以及它的 App ID 和 App Secret
+
+支持 macOS、Linux、WSL 2，以及 Windows 10 1809+/Windows Server 2019+。Windows 可以使用 PowerShell 或 CMD，Git for Windows 不是 CCRC 的必需依赖。
 
 Channels 目前仍是 Claude Code 的 research preview。自定义 Channel 必须在 Claude 启动时加载，不能无感挂到一个已经启动的进程中。CCRC 提供了 resume 和 handoff 流程来保留原会话。
 
@@ -35,13 +37,24 @@ git clone git@github.com:linyuchen/CCRC.git
 cd CCRC
 ```
 
-仓库已经包含构建后的 Plugin 文件，普通使用不需要先安装 npm 依赖或执行构建。先创建配置：
+仓库已经包含构建后的 Plugin 文件，普通使用不需要先安装 npm 依赖或执行构建。
+
+macOS、Linux 和 WSL 先创建配置：
 
 ```bash
 ./bin/ccrc config init
 ```
 
-然后编辑 `~/.ccrc/config.json`：
+Windows 在 PowerShell 或 CMD 中先注册全局的 `ccrc` 命令，再创建配置：
+
+```powershell
+npm link
+ccrc config init
+```
+
+不想注册全局命令时，也可以在仓库目录中使用 `.\bin\ccrc.cmd`。
+
+然后编辑 `~/.ccrc/config.json`。Windows PowerShell 对应 `$HOME\.ccrc\config.json`，CMD 对应 `%USERPROFILE%\.ccrc\config.json`：
 
 ```json
 {
@@ -72,13 +85,19 @@ cd CCRC
 
 不要长期使用 `"*"`。这会允许任何能联系到 Bot 的人控制你的 Claude 会话，也可能看到工作目录、权限请求和 Claude 回复中的内容。
 
-安装 Claude Code Plugin：
+macOS、Linux 和 WSL 安装 Claude Code Plugin：
 
 ```bash
 ./bin/ccrc plugin install
 ```
 
-如果希望在任意目录直接使用 `ccrc`，可以把 `bin` 加入 PATH，或者创建一个链接：
+Windows 使用：
+
+```powershell
+ccrc plugin install
+```
+
+macOS、Linux 或 WSL 如果希望在任意目录直接使用 `ccrc`，可以把 `bin` 加入 PATH，或者创建一个链接：
 
 ```bash
 mkdir -p ~/.local/bin
@@ -115,15 +134,37 @@ CCRC 会自动加载 `ccrc@ccrc-local` Channel。Claude 启动时可能显示开
 CCRC_CHANNEL_FLAG=--channels ccrc
 ```
 
+PowerShell 中对应的写法是：
+
+```powershell
+$env:CCRC_CHANNEL_FLAG = "--channels"
+ccrc
+```
+
+CMD 中使用：
+
+```bat
+set CCRC_CHANNEL_FLAG=--channels
+ccrc
+```
+
 ### 让 `claude` 命令默认经过 CCRC
 
-在 `~/.zshrc` 中加入：
+macOS、Linux 或 WSL 可以在 `~/.zshrc` 中加入：
 
 ```bash
 eval "$(ccrc shell-init zsh)"
 ```
 
 重新打开终端后，直接执行 `claude` 也会自动加载 CCRC。临时绕过时使用 `command claude`。
+
+PowerShell 用户可以在 `$PROFILE` 中加入：
+
+```powershell
+Invoke-Expression ((ccrc shell-init powershell) -join "`n")
+```
+
+重新打开 PowerShell 后，`claude` 会默认经过 CCRC。CMD 用户可以运行 `ccrc shell-init cmd`，将输出的 `doskey` 命令执行一次；该别名只对当前 CMD 窗口生效。直接使用 `ccrc` 不需要 shell-init。
 
 ### 接管已经存在的会话
 
@@ -145,18 +186,18 @@ Plugin 更新后，已经打开的 Claude 会话可以执行 `/reload-plugins`�
 
 ## QQ 中的命令
 
-| 命令 | 作用 |
-| --- | --- |
-| `/session` | 列出在线会话，并用数字按钮选择 QQ 的输入目标 |
-| `/current` | 查看当前输入目标 |
-| `/rename 新名称` | 给当前会话设置一个更容易识别的名称 |
-| `/help` | 查看帮助 |
+| 命令             | 作用                                         |
+| ---------------- | -------------------------------------------- |
+| `/session`       | 列出在线会话，并用数字按钮选择 QQ 的输入目标 |
+| `/current`       | 查看当前输入目标                             |
+| `/rename 新名称` | 给当前会话设置一个更容易识别的名称           |
+| `/help`          | 查看帮助                                     |
 
 其他文本会直接发送给当前选中的 Claude 会话。只有一个在线会话时会自动选中。
 
 ## 回复、权限和选择题
 
-只要一个通过白名单验证的 QQ 对话给 Bot 发过消息，它就会登记为输出接收端。之后所有已加载 CCRC Hook 的 Claude 会话都会把可见回复广播到这些接收端。登记结果保存在 `~/.ccrc/state.json`，Broker 重启后仍然有效。
+只要一个通过白名单验证的 QQ 对话给 Bot 发过消息，它就会登记为输出接收端。之后所有已连接 CCRC Channel 的 Claude 会话都会把可见回复广播到这些接收端。仅加载 Plugin、但没有通过 Channel 连接 Broker 的普通 `claude` 会话不会转发输出或选择题。登记结果保存在 `~/.ccrc/state.json`，Broker 重启后仍然有效。
 
 CCRC 不发送 Claude 的思考内容，也不发送工具参数或具体命令。Claude 在调用工具前写了说明时，QQ 会看到说明和类似“正在搜索文件…”的状态；如果这一段只有工具调用，则不会产生一条只有状态的 QQ 消息。最终回复仍会正常发送。
 
@@ -180,7 +221,7 @@ ccrc broker start
 
 第一个 CCRC 会话会自动启动 Broker。所有 Claude 会话退出后，Broker 默认继续运行，以保持 QQ Gateway 在线。
 
-运行数据都在 `~/.ccrc/`：
+运行数据都在 `~/.ccrc/`；Windows PowerShell 下对应 `$HOME\.ccrc\`，CMD 下对应 `%USERPROFILE%\.ccrc\`：
 
 - `config.json` 保存平台配置和凭据。
 - `state.json` 保存会话选择、别名和输出接收端。
@@ -230,6 +271,8 @@ npm run build
 claude plugin validate plugin/.claude-plugin/plugin.json
 claude plugin validate .claude-plugin/marketplace.json
 ```
+
+CI 会在 Linux、macOS 和原生 Windows 上运行格式检查、类型检查、测试与构建。Windows 测试还会验证 npm 生成的 `ccrc.cmd` 入口和 `claude.cmd` 兼容性。
 
 `plugin/dist/*.cjs` 会提交到仓库，因为 Claude Code 安装 Plugin 后需要直接运行这些文件。源码映射、依赖目录、日志和本机配置不会提交。
 

@@ -9651,6 +9651,13 @@ ${lines.join("\n")}`;
       const input = askUserQuestionSchema.parse(
         await readJsonBody(request, HOOK_BODY_LIMIT)
       );
+      if (!this.registry.get(input.sessionId)) {
+        json(response, 409, {
+          ok: false,
+          error: "Claude session does not have an active CCRC Channel"
+        });
+        return;
+      }
       if (input.projectDir) {
         this.sessionDetails.set(input.sessionId, {
           ...this.sessionDetails.get(input.sessionId),
@@ -9741,6 +9748,8 @@ ${Object.entries(answers).map(
     pending.reject(error);
   }
   async mirrorAssistantResponse(input) {
+    if (!this.registry.get(input.sessionId))
+      return { delivered: false, reason: "channel-not-connected" };
     if (input.origin === "local" && !this.config.broker.mirrorLocalReplies)
       return { delivered: false, reason: "local-mirroring-disabled" };
     const dedupeKey = `${input.sessionId}:${input.messageId}`;

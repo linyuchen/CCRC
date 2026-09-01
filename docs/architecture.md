@@ -26,7 +26,7 @@ The Broker keeps these mappings:
 ```text
 platform conversation -> selected Claude session
 route_id              -> original platform reply target
-output destination    -> persistent broadcast target for every session response
+output destination    -> persistent broadcast target for every connected Channel response
 ```
 
 Selections, aliases, and output destinations survive Broker restarts. Short-lived reply routes do not.
@@ -82,7 +82,7 @@ The protocol has an explicit integer version. Additive fields are preferred; bum
 - QQ Gateway messages are deduplicated in memory.
 - Claude Channel events are ordered by Claude Code, but the protocol does not provide processing acknowledgements.
 - A `reply` waits for the platform API response and returns an acknowledgement to the MCP tool.
-- The authenticated `/hooks/assistant-response` endpoint broadcasts visible progress and final responses from every hooked Claude session to all persisted output destinations and deduplicates repeated lifecycle hooks.
+- The authenticated `/hooks/assistant-response` endpoint accepts visible progress and final responses only while that session has an active Channel connection, broadcasts them to all persisted output destinations, and deduplicates repeated lifecycle hooks.
 - The authenticated `/hooks/ask-user-question` endpoint holds the external racer while the native picker remains interactive. The first side to submit wins; `/hooks/ask-user-question/complete` cancels a still-pending external choice after a native answer.
 - Session selection affects inbound routing only. It never filters outbound response broadcasts.
 - Permission, native `AskUserQuestion`, and compatibility `ask_user` prompts are also broadcast to the registered output destinations; the first valid response wins.
