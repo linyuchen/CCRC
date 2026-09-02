@@ -4402,7 +4402,15 @@ function userText(content) {
 var assistantMirrorHookInputSchema = external_exports.object({
   session_id: external_exports.string().min(1),
   transcript_path: external_exports.string().min(1),
-  hook_event_name: external_exports.enum(["PreToolUse", "PostToolUse", "Stop"])
+  hook_event_name: external_exports.enum([
+    "PreToolUse",
+    "PostToolUse",
+    "Stop",
+    "SubagentStop",
+    "Notification",
+    "UserPromptSubmit",
+    "SessionEnd"
+  ])
 }).passthrough();
 async function mirrorStopHook(rawInput, dependencies) {
   const input = assistantMirrorHookInputSchema.parse(rawInput);

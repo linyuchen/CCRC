@@ -439,7 +439,14 @@ describe("Stop hook", () => {
     });
   });
 
-  it.each(["PreToolUse", "PostToolUse"] as const)(
+  it.each([
+    "PreToolUse",
+    "PostToolUse",
+    "SubagentStop",
+    "Notification",
+    "UserPromptSubmit",
+    "SessionEnd",
+  ] as const)(
     "posts an in-progress assistant text on %s",
     async (hookEventName) => {
       const transcript = await transcriptFile([

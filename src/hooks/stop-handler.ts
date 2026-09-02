@@ -2,11 +2,23 @@ import { z } from "zod";
 import type { ClaudeCodeRemoteControlConfig } from "../core/config.js";
 import { readLastAssistantResponse } from "./transcript.js";
 
+// A turn's closing message often carries no tool call, so Stop is its only
+// exit — and Stop does not fire when the turn ends waiting on a background
+// agent. Mirroring is idempotent (deduped per message id), so every event that
+// can mark a turn idle is wired up and the extra firings cost nothing.
 const assistantMirrorHookInputSchema = z
   .object({
     session_id: z.string().min(1),
     transcript_path: z.string().min(1),
-    hook_event_name: z.enum(["PreToolUse", "PostToolUse", "Stop"]),
+    hook_event_name: z.enum([
+      "PreToolUse",
+      "PostToolUse",
+      "Stop",
+      "SubagentStop",
+      "Notification",
+      "UserPromptSubmit",
+      "SessionEnd",
+    ]),
   })
   .passthrough();
 
