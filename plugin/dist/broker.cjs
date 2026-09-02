@@ -9847,8 +9847,8 @@ ${Object.entries(answers).map(
       text.trim(),
       "",
       "---",
-      `**\u4F1A\u8BDD\uFF1A** ${escapeMarkdown(title)}`,
-      ...projectDir ? [`**\u76EE\u5F55\uFF1A** \`${escapeMarkdownCode(projectDir)}\``] : []
+      `> \u4F1A\u8BDD\uFF1A${escapeMarkdownCode(title)}`,
+      ...projectDir ? [`> \u76EE\u5F55\uFF1A${escapeMarkdownCode(projectDir)}`] : []
     ].join("\n");
   }
   sessionTitle(sessionId) {

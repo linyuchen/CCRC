@@ -1342,14 +1342,15 @@ export class Broker {
     const rawTitle =
       details.title ?? remembered?.title ?? connected?.displayName;
     const title = friendlySessionTitle(rawTitle, projectDir, sessionId);
+    // Same blockquote the tool-activity hint uses: QQ has no font-size
+    // primitive, headings render larger and bolder, and a fenced block would be
+    // shown as real code.
     return [
       text.trim(),
       "",
       "---",
-      `**会话：** ${escapeMarkdown(title)}`,
-      ...(projectDir
-        ? [`**目录：** \`${escapeMarkdownCode(projectDir)}\``]
-        : []),
+      `> 会话：${escapeMarkdownCode(title)}`,
+      ...(projectDir ? [`> 目录：${escapeMarkdownCode(projectDir)}`] : []),
     ].join("\n");
   }
 

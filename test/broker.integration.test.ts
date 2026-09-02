@@ -140,7 +140,7 @@ describe("Broker", () => {
     );
     expect(mirrored).toMatchObject({ ok: true, delivered: true });
     expect(fixture.platform.sent.at(-1)?.text).toBe(
-      "这是终端发起任务的回答\n\n---\n**会话：** 修复第二个项目\n**目录：** `/work/b`",
+      "这是终端发起任务的回答\n\n---\n> 会话：修复第二个项目\n> 目录：/work/b",
     );
     expect(fixture.platform.sent.at(-1)?.target.messageId).toBeUndefined();
 
@@ -159,7 +159,7 @@ describe("Broker", () => {
       deliveredTargets: 1,
     });
     expect(fixture.platform.sent.at(-1)?.text).toContain(
-      "**会话：** 处理第一个项目",
+      "会话：处理第一个项目",
     );
     expect(fixture.platform.sent.at(-1)?.text).not.toContain("session-a");
 
@@ -178,7 +178,7 @@ describe("Broker", () => {
       reason: "channel-not-connected",
     });
     expect(fixture.platform.sent.at(-1)?.text).toContain(
-      "**会话：** 处理第一个项目",
+      "会话：处理第一个项目",
     );
 
     await waitUntil(async () => {
@@ -362,7 +362,7 @@ describe("Broker", () => {
       item.text.includes("你主要使用哪种语言？"),
     );
     expect(firstPrompt?.text).toContain("问题 1/2 · 语言");
-    expect(firstPrompt?.text).toContain("**目录：** `/work/native`");
+    expect(firstPrompt?.text).toContain("目录：/work/native");
     const languageButton = firstPrompt?.options?.buttons
       ?.flat()
       .find((button) => button.data.endsWith(":1"));
@@ -490,7 +490,7 @@ describe("Broker", () => {
     );
     expect(completionNotice?.text).toContain("**继续吗？：** 继续");
     expect(completionNotice?.text).toContain("**选择环境：** 生产");
-    expect(completionNotice?.text).toContain("**目录：** `/work/native`");
+    expect(completionNotice?.text).toContain("目录：/work/native");
   });
 
   it("relays permission buttons from a session not selected by QQ", async () => {
