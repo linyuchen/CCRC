@@ -146,6 +146,8 @@ describe("splitMessage", () => {
     expect(JSON.parse(String(calls[2]?.init?.body))).toMatchObject({
       file_type: 1,
       srv_send_msg: false,
+      // Without file_name the attachment lands in QQ as "未命名".
+      file_name: "shot.png",
       file_data: Buffer.from("89504e470d0a1a0a", "hex").toString("base64"),
     });
     expect(calls[3]?.url).toBe(
@@ -186,6 +188,7 @@ describe("splitMessage", () => {
     ]);
     expect(JSON.parse(String(calls[1]?.init?.body))).toMatchObject({
       file_type: 4,
+      file_name: "report.pdf",
     });
   });
 

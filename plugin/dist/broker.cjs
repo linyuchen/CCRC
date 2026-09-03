@@ -8252,6 +8252,10 @@ var QQBotAdapter = class {
    * QQ takes rich media in two steps: upload the bytes for a `file_info`
    * handle, then send a message that references it. `srv_send_msg: false`
    * keeps the upload from posting a message of its own.
+   *
+   * `file_name` is absent from QQ's documentation but is what stops the
+   * attachment from arriving as "未命名" — verified against the live API,
+   * where `filename` and `name` are both silently ignored.
    */
   async sendAttachment(destination, target, path) {
     const body = await (0, import_promises4.readFile)(path);
@@ -8265,6 +8269,7 @@ var QQBotAdapter = class {
       {
         file_type: qqFileType(path),
         file_data: body.toString("base64"),
+        file_name: (0, import_node_path3.basename)(path),
         srv_send_msg: false
       }
     );
