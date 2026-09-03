@@ -22622,7 +22622,7 @@ function formatChannelMessage(message) {
     message.text,
     ...attachmentLines(message.attachments),
     "",
-    `<ccrc_context route_id="${escapeAttribute(message.routeId)}" platform="${escapeAttribute(message.platform)}" />`
+    `[${message.platform}]`
   ].join("\n");
 }
 function attachmentLines(attachments) {
@@ -22639,9 +22639,6 @@ function attachmentLines(attachments) {
       return parts.join(" ");
     })
   ];
-}
-function escapeAttribute(value) {
-  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 // src/channel/main.ts
@@ -22890,7 +22887,6 @@ async function main() {
         method: "notifications/claude/channel",
         params: {
           content: formatChannelMessage({
-            routeId: message.routeId,
             platform: message.platform,
             text: message.text,
             ...message.attachments ? { attachments: message.attachments } : {}

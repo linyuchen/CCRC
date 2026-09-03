@@ -292,7 +292,6 @@ async function main(): Promise<void> {
         method: "notifications/claude/channel",
         params: {
           content: formatChannelMessage({
-            routeId: message.routeId,
             platform: message.platform,
             text: message.text,
             ...(message.attachments

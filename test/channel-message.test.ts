@@ -2,22 +2,29 @@ import { describe, expect, it } from "vitest";
 import { formatChannelMessage } from "../src/channel/channel-message.js";
 
 describe("channel message envelope", () => {
-  it("shows the user text first and keeps the trusted reply route at the end", () => {
+  it("leads with the user text and trails a short platform tag", () => {
     expect(
       formatChannelMessage({
-        routeId: "route-123",
         platform: "qqbot",
         text: "输出一段 Markdown",
       }),
-    ).toBe(
-      '输出一段 Markdown\n\n<ccrc_context route_id="route-123" platform="qqbot" />',
-    );
+    ).toBe("输出一段 Markdown\n\n[qqbot]");
+  });
+
+  it("does not repeat the reply route the host already carries", () => {
+    const formatted = formatChannelMessage({
+      platform: "qqbot",
+      text: "文件名正常显示",
+    });
+    // The preview line is what the user reads; a route id there just truncates
+    // their own words away.
+    expect(formatted).not.toContain("route_id");
+    expect(formatted.split("\n")[0]).toBe("文件名正常显示");
   });
 
   it("points at the downloaded copy so the session can open the file", () => {
     expect(
       formatChannelMessage({
-        routeId: "route-123",
         platform: "qqbot",
         text: "看看这张图",
         attachments: [
@@ -36,7 +43,7 @@ describe("channel message envelope", () => {
         "附件：",
         "- screenshot.png [image/png] /home/me/.ccrc/attachments/ab12-screenshot.png",
         "",
-        '<ccrc_context route_id="route-123" platform="qqbot" />',
+        "[qqbot]",
       ].join("\n"),
     );
   });
@@ -44,7 +51,6 @@ describe("channel message envelope", () => {
   it("falls back to the original link when the download failed", () => {
     expect(
       formatChannelMessage({
-        routeId: "route-123",
         platform: "qqbot",
         text: "",
         attachments: [{ url: "https://cdn.example/gone.png" }],
@@ -52,15 +58,12 @@ describe("channel message envelope", () => {
     ).toContain("- 附件 下载失败，原链接：https://cdn.example/gone.png");
   });
 
-  it("escapes metadata attributes without changing user text", () => {
+  it("keeps user text exactly as written", () => {
     expect(
       formatChannelMessage({
-        routeId: 'route&"<>',
         platform: "qqbot",
-        text: "<keep-user-text>",
+        text: '<keep-user-text> & "quotes"',
       }),
-    ).toBe(
-      '<keep-user-text>\n\n<ccrc_context route_id="route&amp;&quot;&lt;&gt;" platform="qqbot" />',
-    );
+    ).toBe('<keep-user-text> & "quotes"\n\n[qqbot]');
   });
 });

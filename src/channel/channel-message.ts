@@ -6,18 +6,23 @@ export interface ChannelAttachment {
 }
 
 export interface ChannelMessageEnvelope {
-  routeId: string;
   platform: string;
   text: string;
   attachments?: ChannelAttachment[];
 }
 
+/**
+ * Claude Code renders this body after a `ccrc:` prefix and flattens it for the
+ * preview line, so the user's own words come first and only a short platform
+ * tag trails them. The reply route is not repeated here — the host already
+ * carries route_id and platform as attributes of the channel event.
+ */
 export function formatChannelMessage(message: ChannelMessageEnvelope): string {
   return [
     message.text,
     ...attachmentLines(message.attachments),
     "",
-    `<ccrc_context route_id="${escapeAttribute(message.routeId)}" platform="${escapeAttribute(message.platform)}" />`,
+    `[${message.platform}]`,
   ].join("\n");
 }
 
@@ -37,12 +42,4 @@ function attachmentLines(attachments?: ChannelAttachment[]): string[] {
       return parts.join(" ");
     }),
   ];
-}
-
-function escapeAttribute(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
 }
