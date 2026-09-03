@@ -2,6 +2,8 @@ export interface Attachment {
   name?: string;
   url: string;
   contentType?: string;
+  /** Local copy the broker downloaded so a session can open the file. */
+  path?: string;
 }
 
 export interface ReplyTarget {

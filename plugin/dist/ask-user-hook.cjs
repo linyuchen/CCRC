@@ -4172,7 +4172,8 @@ function resolvePaths(env = process.env) {
     token: (0, import_node_path.join)(runtime, "broker.token"),
     pid: (0, import_node_path.join)(runtime, "broker.pid"),
     state: (0, import_node_path.join)(home, "state.json"),
-    log: (0, import_node_path.join)(home, "broker.log")
+    log: (0, import_node_path.join)(home, "broker.log"),
+    attachments: (0, import_node_path.join)(home, "attachments")
   };
 }
 async function ensurePrivateDirectories(paths) {

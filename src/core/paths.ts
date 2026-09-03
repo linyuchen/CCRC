@@ -12,6 +12,7 @@ export interface ClaudeCodeRemoteControlPaths {
   pid: string;
   state: string;
   log: string;
+  attachments: string;
 }
 
 export function resolvePaths(
@@ -27,6 +28,7 @@ export function resolvePaths(
     pid: join(runtime, "broker.pid"),
     state: join(home, "state.json"),
     log: join(home, "broker.log"),
+    attachments: join(home, "attachments"),
   };
 }
 

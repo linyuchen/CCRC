@@ -22154,7 +22154,8 @@ function resolvePaths(env = process.env) {
     token: (0, import_node_path.join)(runtime, "broker.token"),
     pid: (0, import_node_path.join)(runtime, "broker.pid"),
     state: (0, import_node_path.join)(home, "state.json"),
-    log: (0, import_node_path.join)(home, "broker.log")
+    log: (0, import_node_path.join)(home, "broker.log"),
+    attachments: (0, import_node_path.join)(home, "attachments")
   };
 }
 async function ensurePrivateDirectories(paths) {
@@ -22287,7 +22288,8 @@ var brokerMessageSchema = external_exports.discriminatedUnion("type", [
       external_exports.object({
         name: external_exports.string().optional(),
         url: external_exports.string(),
-        contentType: external_exports.string().optional()
+        contentType: external_exports.string().optional(),
+        path: external_exports.string().optional()
       })
     ).optional()
   }),
@@ -22611,9 +22613,25 @@ function resolveBrokerEntry() {
 function formatChannelMessage(message) {
   return [
     message.text,
+    ...attachmentLines(message.attachments),
     "",
     `<ccrc_context route_id="${escapeAttribute(message.routeId)}" platform="${escapeAttribute(message.platform)}" />`
   ].join("\n");
+}
+function attachmentLines(attachments) {
+  if (!attachments || attachments.length === 0) return [];
+  return [
+    "",
+    "\u9644\u4EF6\uFF1A",
+    ...attachments.map((attachment) => {
+      const parts = [`- ${attachment.name ?? "\u9644\u4EF6"}`];
+      if (attachment.contentType) parts.push(`[${attachment.contentType}]`);
+      parts.push(
+        attachment.path ? attachment.path : `\u4E0B\u8F7D\u5931\u8D25\uFF0C\u539F\u94FE\u63A5\uFF1A${attachment.url}`
+      );
+      return parts.join(" ");
+    })
+  ];
 }
 function escapeAttribute(value) {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -22854,7 +22872,8 @@ async function main() {
           content: formatChannelMessage({
             routeId: message.routeId,
             platform: message.platform,
-            text: message.text
+            text: message.text,
+            ...message.attachments ? { attachments: message.attachments } : {}
           }),
           meta: {
             route_id: message.routeId,

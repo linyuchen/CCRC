@@ -14,6 +14,44 @@ describe("channel message envelope", () => {
     );
   });
 
+  it("points at the downloaded copy so the session can open the file", () => {
+    expect(
+      formatChannelMessage({
+        routeId: "route-123",
+        platform: "qqbot",
+        text: "看看这张图",
+        attachments: [
+          {
+            name: "screenshot.png",
+            url: "https://cdn.example/a.png",
+            contentType: "image/png",
+            path: "/home/me/.ccrc/attachments/ab12-screenshot.png",
+          },
+        ],
+      }),
+    ).toBe(
+      [
+        "看看这张图",
+        "",
+        "附件：",
+        "- screenshot.png [image/png] /home/me/.ccrc/attachments/ab12-screenshot.png",
+        "",
+        '<ccrc_context route_id="route-123" platform="qqbot" />',
+      ].join("\n"),
+    );
+  });
+
+  it("falls back to the original link when the download failed", () => {
+    expect(
+      formatChannelMessage({
+        routeId: "route-123",
+        platform: "qqbot",
+        text: "",
+        attachments: [{ url: "https://cdn.example/gone.png" }],
+      }),
+    ).toContain("- 附件 下载失败，原链接：https://cdn.example/gone.png");
+  });
+
   it("escapes metadata attributes without changing user text", () => {
     expect(
       formatChannelMessage({

@@ -8405,7 +8405,8 @@ function resolvePaths(env = process.env) {
     token: (0, import_node_path.join)(runtime, "broker.token"),
     pid: (0, import_node_path.join)(runtime, "broker.pid"),
     state: (0, import_node_path.join)(home, "state.json"),
-    log: (0, import_node_path.join)(home, "broker.log")
+    log: (0, import_node_path.join)(home, "broker.log"),
+    attachments: (0, import_node_path.join)(home, "attachments")
   };
 }
 async function ensurePrivateDirectories(paths) {
@@ -8563,7 +8564,8 @@ var brokerMessageSchema = external_exports.discriminatedUnion("type", [
       external_exports.object({
         name: external_exports.string().optional(),
         url: external_exports.string(),
-        contentType: external_exports.string().optional()
+        contentType: external_exports.string().optional(),
+        path: external_exports.string().optional()
       })
     ).optional()
   }),

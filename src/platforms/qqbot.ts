@@ -366,15 +366,13 @@ export class QQBotAdapter implements PlatformAdapter {
     if (!this.acceptMessage(messageId, senderId, groupOpenId, event.timestamp))
       return;
 
-    const text = withAttachments(
-      stripAtMention(event.content ?? ""),
-      event.attachments,
-    );
-    if (!text) return;
+    const text = stripAtMention(event.content ?? "");
+    const attachments = normalizeAttachments(event.attachments);
+    // An image-only message carries no text but still has to reach the session.
+    if (!text && !attachments) return;
     const conversationId = this.config.shareGroupSession
       ? `group:${groupOpenId}`
       : `group:${groupOpenId}:${senderId}`;
-    const attachments = normalizeAttachments(event.attachments);
     await this.deliver({
       platform: this.id,
       conversationId,
@@ -405,13 +403,10 @@ export class QQBotAdapter implements PlatformAdapter {
     if (!this.acceptMessage(messageId, senderId, senderId, event.timestamp))
       return;
 
-    const text = withAttachments(
-      (event.content ?? "").trim(),
-      event.attachments,
-    );
-    if (!text) return;
-    const conversationId = `c2c:${senderId}`;
+    const text = (event.content ?? "").trim();
     const attachments = normalizeAttachments(event.attachments);
+    if (!text && !attachments) return;
+    const conversationId = `c2c:${senderId}`;
     await this.deliver({
       platform: this.id,
       conversationId,
@@ -640,18 +635,6 @@ function normalizeAttachments(
       ...(item.content_type ? { contentType: item.content_type } : {}),
     }));
   return normalized.length > 0 ? normalized : undefined;
-}
-
-function withAttachments(
-  content: string,
-  attachments?: QQAttachment[],
-): string {
-  const lines = (attachments ?? [])
-    .filter((item) => item.url)
-    .map(
-      (item) => `[附件${item.filename ? ` ${item.filename}` : ""}] ${item.url}`,
-    );
-  return [content.trim(), ...lines].filter(Boolean).join("\n");
 }
 
 function parseTimestamp(value?: string): Date {

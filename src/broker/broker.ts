@@ -22,6 +22,7 @@ import {
   type ClientMessage,
 } from "../core/protocol.js";
 import type { ClaudeCodeRemoteControlPaths } from "../core/paths.js";
+import { saveAttachments } from "./attachments.js";
 import { createPlatformAdapter } from "../platforms/index.js";
 import type {
   InboundMessage,
@@ -650,6 +651,13 @@ export class Broker {
     }
 
     const route = this.rememberRoute(session.metadata.id, adapter, message);
+    const attachments = message.attachments
+      ? await saveAttachments(
+          message.attachments,
+          this.paths.attachments,
+          this.logger,
+        )
+      : undefined;
 
     const sent = this.registry.send(session.metadata.id, {
       type: "inbound",
@@ -659,7 +667,7 @@ export class Broker {
       senderId: message.senderId,
       ...(message.senderName ? { senderName: message.senderName } : {}),
       text: message.text,
-      ...(message.attachments ? { attachments: message.attachments } : {}),
+      ...(attachments ? { attachments } : {}),
     });
     if (!sent)
       await adapter.send(

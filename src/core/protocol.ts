@@ -71,6 +71,7 @@ export const brokerMessageSchema = z.discriminatedUnion("type", [
           name: z.string().optional(),
           url: z.string(),
           contentType: z.string().optional(),
+          path: z.string().optional(),
         }),
       )
       .optional(),

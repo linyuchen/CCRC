@@ -94,6 +94,41 @@ describe("Broker", () => {
     expect(fixture.platform.sent.at(-1)?.text).toBe("检查完成");
   });
 
+  it("downloads an image-only message and hands the session a local path", async () => {
+    const fixture = await createFixture();
+    const client = await connectSession(
+      fixture.port,
+      fixture.token,
+      session("session-a", "/work/a"),
+    );
+    cleanups.push(async () => client.close());
+
+    const inbound = nextMessage(
+      client,
+      (message) => message.type === "inbound",
+    );
+    await fixture.platform.emit({
+      ...externalMessage(""),
+      attachments: [
+        {
+          name: "shot.png",
+          url: "data:image/png;base64,UE5HREFUQQ==",
+          contentType: "image/png",
+        },
+      ],
+    });
+
+    const delivered = await inbound;
+    if (delivered.type !== "inbound")
+      throw new Error("expected inbound message");
+    const attachment = delivered.attachments?.[0];
+    expect(attachment?.name).toBe("shot.png");
+    expect(attachment?.path).toContain("shot.png");
+    await expect(readFile(attachment?.path as string, "utf8")).resolves.toBe(
+      "PNGDATA",
+    );
+  });
+
   it("lists sessions with number buttons and switches their input target", async () => {
     const fixture = await createFixture();
     const first = await connectSession(
@@ -565,6 +600,7 @@ async function createFixture(): Promise<{
     pid: join(runtime, "broker.pid"),
     state: join(home, "state.json"),
     log: join(home, "broker.log"),
+    attachments: join(home, "attachments"),
   };
   const port = await freePort();
   const config: ClaudeCodeRemoteControlConfig = {

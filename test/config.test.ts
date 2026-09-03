@@ -96,5 +96,6 @@ async function testPaths(): Promise<ClaudeCodeRemoteControlPaths> {
     pid: join(runtime, "broker.pid"),
     state: join(home, "state.json"),
     log: join(home, "broker.log"),
+    attachments: join(home, "attachments"),
   };
 }

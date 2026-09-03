@@ -279,6 +279,9 @@ async function main(): Promise<void> {
             routeId: message.routeId,
             platform: message.platform,
             text: message.text,
+            ...(message.attachments
+              ? { attachments: message.attachments }
+              : {}),
           }),
           meta: {
             route_id: message.routeId,

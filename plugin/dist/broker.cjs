@@ -2269,7 +2269,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes3, createHash } = require("crypto");
+    var { randomBytes: randomBytes3, createHash: createHash2 } = require("crypto");
     var { Duplex, Readable } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -2937,7 +2937,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -3306,7 +3306,7 @@ var require_websocket_server = __commonJS({
     var EventEmitter = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
-    var { createHash } = require("crypto");
+    var { createHash: createHash2 } = require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -3613,7 +3613,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -3701,7 +3701,7 @@ var require_websocket_server = __commonJS({
 });
 
 // src/broker/main.ts
-var import_promises5 = require("node:fs/promises");
+var import_promises6 = require("node:fs/promises");
 
 // src/core/config.ts
 var import_promises = require("node:fs/promises");
@@ -7917,7 +7917,8 @@ function resolvePaths(env = process.env) {
     token: (0, import_node_path.join)(runtime, "broker.token"),
     pid: (0, import_node_path.join)(runtime, "broker.pid"),
     state: (0, import_node_path.join)(home, "state.json"),
-    log: (0, import_node_path.join)(home, "broker.log")
+    log: (0, import_node_path.join)(home, "broker.log"),
+    attachments: (0, import_node_path.join)(home, "attachments")
   };
 }
 async function ensurePrivateDirectories(paths) {
@@ -7952,10 +7953,10 @@ async function readOrCreateBrokerToken(paths) {
 }
 
 // src/broker/broker.ts
-var import_node_crypto2 = require("node:crypto");
-var import_promises4 = require("node:fs/promises");
+var import_node_crypto3 = require("node:crypto");
+var import_promises5 = require("node:fs/promises");
 var import_node_http = require("node:http");
-var import_node_path2 = require("node:path");
+var import_node_path3 = require("node:path");
 
 // node_modules/ws/wrapper.mjs
 var import_stream = __toESM(require_stream(), 1);
@@ -8028,7 +8029,8 @@ var brokerMessageSchema = external_exports.discriminatedUnion("type", [
       external_exports.object({
         name: external_exports.string().optional(),
         url: external_exports.string(),
-        contentType: external_exports.string().optional()
+        contentType: external_exports.string().optional(),
+        path: external_exports.string().optional()
       })
     ).optional()
   }),
@@ -8064,6 +8066,97 @@ function parseWireMessage(data) {
   if (data instanceof ArrayBuffer)
     return JSON.parse(Buffer.from(data).toString("utf8"));
   throw new Error("unsupported websocket payload");
+}
+
+// src/broker/attachments.ts
+var import_node_crypto2 = require("node:crypto");
+var import_promises3 = require("node:fs/promises");
+var import_node_path2 = require("node:path");
+var MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+var ATTACHMENT_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
+var DOWNLOAD_TIMEOUT_MS = 2e4;
+async function saveAttachments(attachments, directory, logger, fetchImpl = fetch) {
+  if (attachments.length === 0) return attachments;
+  await (0, import_promises3.mkdir)(directory, { recursive: true, mode: 448 });
+  await pruneAttachments(directory, logger);
+  return Promise.all(
+    attachments.map(
+      (attachment) => saveAttachment(attachment, directory, logger, fetchImpl)
+    )
+  );
+}
+async function saveAttachment(attachment, directory, logger, fetchImpl) {
+  try {
+    const response = await fetchImpl(attachment.url, {
+      signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    assertWithinLimit(Number(response.headers.get("content-length")));
+    const body = Buffer.from(await response.arrayBuffer());
+    assertWithinLimit(body.byteLength);
+    const path = (0, import_node_path2.join)(directory, attachmentFilename(attachment, body));
+    await (0, import_promises3.writeFile)(path, body, { mode: 384 });
+    return { ...attachment, path };
+  } catch (error) {
+    logger.warn("failed to download attachment", {
+      url: attachment.url,
+      error: String(error)
+    });
+    return attachment;
+  }
+}
+function assertWithinLimit(bytes) {
+  if (Number.isFinite(bytes) && bytes > MAX_ATTACHMENT_BYTES)
+    throw new Error(`attachment exceeds ${MAX_ATTACHMENT_BYTES} bytes`);
+}
+function attachmentFilename(attachment, body) {
+  const digest = (0, import_node_crypto2.createHash)("sha256").update(attachment.url).digest("hex").slice(0, 12);
+  const sniffed = sniffExtension(body);
+  const name = safeBaseName(attachment.name) || `attachment${sniffed ?? extensionFor(attachment.contentType)}`;
+  return `${digest}-${retype(name, sniffed)}`;
+}
+function retype(name, sniffed) {
+  if (!sniffed) return name;
+  const current = (0, import_node_path2.extname)(name).toLowerCase();
+  if (current === sniffed) return name;
+  if (sniffed === ".jpg" && current === ".jpeg") return name;
+  return `${name.slice(0, name.length - current.length)}${sniffed}`;
+}
+function sniffExtension(body) {
+  for (const [extension2, magic] of FILE_SIGNATURES)
+    if (body.subarray(0, magic.length).equals(magic)) return extension2;
+  if (body.subarray(0, 4).toString("latin1") === "RIFF" && body.subarray(8, 12).toString("latin1") === "WEBP")
+    return ".webp";
+  return void 0;
+}
+var FILE_SIGNATURES = [
+  [".png", Buffer.from("89504e470d0a1a0a", "hex")],
+  [".jpg", Buffer.from("ffd8ff", "hex")],
+  [".gif", Buffer.from("GIF8", "latin1")],
+  [".pdf", Buffer.from("%PDF-", "latin1")],
+  [".zip", Buffer.from("PK", "latin1")]
+];
+function safeBaseName(name) {
+  if (!name) return "";
+  return name.replace(/^.*[\\/]/, "").replace(/[^\p{L}\p{N}._-]/gu, "_").replace(/^[.]+/, "").slice(0, 80);
+}
+function extensionFor(contentType) {
+  const subtype = contentType?.split("/")[1]?.split(";")[0]?.trim();
+  const extension2 = subtype?.replace(/[^\p{L}\p{N}]/gu, "");
+  return extension2 ? `.${extension2}` : "";
+}
+async function pruneAttachments(directory, logger) {
+  const cutoff = Date.now() - ATTACHMENT_TTL_MS;
+  try {
+    for (const entry of await (0, import_promises3.readdir)(directory)) {
+      const path = (0, import_node_path2.join)(directory, entry);
+      const info = await (0, import_promises3.stat)(path).catch(() => void 0);
+      if (info?.isFile() && info.mtimeMs < cutoff)
+        await (0, import_promises3.unlink)(path).catch(() => void 0);
+    }
+  } catch (error) {
+    logger.warn("failed to prune attachment cache", { error: String(error) });
+  }
 }
 
 // src/platforms/qqbot.ts
@@ -8334,13 +8427,10 @@ var QQBotAdapter = class {
     });
     if (!this.acceptMessage(messageId, senderId, groupOpenId, event.timestamp))
       return;
-    const text = withAttachments(
-      stripAtMention(event.content ?? ""),
-      event.attachments
-    );
-    if (!text) return;
-    const conversationId = this.config.shareGroupSession ? `group:${groupOpenId}` : `group:${groupOpenId}:${senderId}`;
+    const text = stripAtMention(event.content ?? "");
     const attachments = normalizeAttachments(event.attachments);
+    if (!text && !attachments) return;
+    const conversationId = this.config.shareGroupSession ? `group:${groupOpenId}` : `group:${groupOpenId}:${senderId}`;
     await this.deliver({
       platform: this.id,
       conversationId,
@@ -8369,13 +8459,10 @@ var QQBotAdapter = class {
     });
     if (!this.acceptMessage(messageId, senderId, senderId, event.timestamp))
       return;
-    const text = withAttachments(
-      (event.content ?? "").trim(),
-      event.attachments
-    );
-    if (!text) return;
-    const conversationId = `c2c:${senderId}`;
+    const text = (event.content ?? "").trim();
     const attachments = normalizeAttachments(event.attachments);
+    if (!text && !attachments) return;
+    const conversationId = `c2c:${senderId}`;
     await this.deliver({
       platform: this.id,
       conversationId,
@@ -8546,12 +8633,6 @@ function normalizeAttachments(attachments) {
     ...item.content_type ? { contentType: item.content_type } : {}
   }));
   return normalized.length > 0 ? normalized : void 0;
-}
-function withAttachments(content, attachments) {
-  const lines = (attachments ?? []).filter((item) => item.url).map(
-    (item) => `[\u9644\u4EF6${item.filename ? ` ${item.filename}` : ""}] ${item.url}`
-  );
-  return [content.trim(), ...lines].filter(Boolean).join("\n");
 }
 function parseTimestamp(value) {
   if (!value) return /* @__PURE__ */ new Date();
@@ -8727,7 +8808,7 @@ var SessionRegistry = class {
 };
 
 // src/broker/state-store.ts
-var import_promises3 = require("node:fs/promises");
+var import_promises4 = require("node:fs/promises");
 var EMPTY_STATE = {
   selections: {},
   aliases: {},
@@ -8736,7 +8817,7 @@ var EMPTY_STATE = {
 async function loadState(path) {
   try {
     const parsed = JSON.parse(
-      await (0, import_promises3.readFile)(path, "utf8")
+      await (0, import_promises4.readFile)(path, "utf8")
     );
     return {
       selections: isStringRecord(parsed.selections) ? parsed.selections : {},
@@ -8750,12 +8831,12 @@ async function loadState(path) {
 }
 async function saveState(path, state) {
   const temporary = `${path}.${process.pid}.tmp`;
-  await (0, import_promises3.writeFile)(temporary, `${JSON.stringify(state, null, 2)}
+  await (0, import_promises4.writeFile)(temporary, `${JSON.stringify(state, null, 2)}
 `, {
     mode: 384
   });
-  await (0, import_promises3.chmod)(temporary, 384).catch(() => void 0);
-  await (0, import_promises3.rename)(temporary, path);
+  await (0, import_promises4.chmod)(temporary, 384).catch(() => void 0);
+  await (0, import_promises4.rename)(temporary, path);
 }
 function parseOutputTargets(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -8920,7 +9001,7 @@ var Broker = class {
     );
     await new Promise((resolve) => this.server.close(() => resolve()));
     await this.stateWrite.catch(() => void 0);
-    await (0, import_promises4.unlink)(this.paths.pid).catch(() => void 0);
+    await (0, import_promises5.unlink)(this.paths.pid).catch(() => void 0);
     this.logger.info("broker stopped");
   }
   status() {
@@ -9273,6 +9354,11 @@ ${detail}${multiSelectHelp}`
       return;
     }
     const route = this.rememberRoute(session.metadata.id, adapter, message);
+    const attachments = message.attachments ? await saveAttachments(
+      message.attachments,
+      this.paths.attachments,
+      this.logger
+    ) : void 0;
     const sent = this.registry.send(session.metadata.id, {
       type: "inbound",
       routeId: route.id,
@@ -9281,7 +9367,7 @@ ${detail}${multiSelectHelp}`
       senderId: message.senderId,
       ...message.senderName ? { senderName: message.senderName } : {},
       text: message.text,
-      ...message.attachments ? { attachments: message.attachments } : {}
+      ...attachments ? { attachments } : {}
     });
     if (!sent)
       await adapter.send(
@@ -9565,7 +9651,7 @@ ${lines.join("\n")}`;
   }
   rememberRoute(sessionId, adapter, message) {
     const route = {
-      id: (0, import_node_crypto2.randomBytes)(12).toString("hex"),
+      id: (0, import_node_crypto3.randomBytes)(12).toString("hex"),
       sessionId,
       platformId: adapter.id,
       target: message.replyTarget,
@@ -9667,7 +9753,7 @@ ${lines.join("\n")}`;
       const answers = {};
       for (const [index, question] of input.questions.entries()) {
         if (clientClosed) return;
-        activeChoiceId = `hook-${(0, import_node_crypto2.randomBytes)(10).toString("hex")}`;
+        activeChoiceId = `hook-${(0, import_node_crypto3.randomBytes)(10).toString("hex")}`;
         const selection = await this.waitForChoice({
           sessionId: input.sessionId,
           requestId: activeChoiceId,
@@ -9966,7 +10052,7 @@ function friendlySessionTitle(rawTitle, projectDir, sessionId) {
     const withoutGeneratedId = cleaned.endsWith(suffix) ? cleaned.slice(0, -suffix.length) : cleaned;
     if (withoutGeneratedId) return withoutGeneratedId;
   }
-  return projectDir ? (0, import_node_path2.basename)(projectDir) || "Claude \u4F1A\u8BDD" : "Claude \u4F1A\u8BDD";
+  return projectDir ? (0, import_node_path3.basename)(projectDir) || "Claude \u4F1A\u8BDD" : "Claude \u4F1A\u8BDD";
 }
 function escapeMarkdown(value) {
   return value.replace(/([\\`*_{}[\]()#+.!>|])/g, "\\$1");
@@ -10009,7 +10095,7 @@ async function main() {
   logger.info("configuration loaded", safeConfigSummary(config));
   const broker = new Broker(config, paths, token, logger);
   await broker.start();
-  await (0, import_promises5.writeFile)(paths.pid, `${process.pid}
+  await (0, import_promises6.writeFile)(paths.pid, `${process.pid}
 `, { mode: 384 });
   let stopping = false;
   const stop = async (signal) => {
@@ -10019,7 +10105,7 @@ async function main() {
     await broker.stop().catch(
       (error) => logger.error("broker shutdown failed", { error: String(error) })
     );
-    await (0, import_promises5.unlink)(paths.pid).catch(() => void 0);
+    await (0, import_promises6.unlink)(paths.pid).catch(() => void 0);
     process.exitCode = 0;
   };
   process.on("SIGINT", () => void stop("SIGINT"));
