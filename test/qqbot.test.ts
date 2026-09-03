@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QQBotConfig } from "../src/core/config.js";
 import type { Logger } from "../src/core/logger.js";
@@ -6,7 +9,15 @@ import type { InboundHandler, InboundMessage } from "../src/platforms/types.js";
 
 const logger: Logger = { debug() {}, info() {}, warn() {}, error() {} };
 
-afterEach(() => vi.unstubAllGlobals());
+const attachmentDirectories: string[] = [];
+afterEach(async () => {
+  vi.unstubAllGlobals();
+  await Promise.all(
+    attachmentDirectories
+      .splice(0)
+      .map((path) => rm(path, { recursive: true, force: true })),
+  );
+});
 
 describe("splitMessage", () => {
   it("preserves unicode code points and prefers newline boundaries", () => {
@@ -109,6 +120,75 @@ describe("splitMessage", () => {
     });
   });
 
+  it("uploads an attachment for a file_info handle, then sends it as media", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal("fetch", stubApi(calls, { file_info: "handle-1" }));
+    const image = join(await tempDirectory(), "shot.png");
+    await writeFile(image, Buffer.from("89504e470d0a1a0a", "hex"));
+
+    const adapter = new QQBotAdapter(qqConfig(), logger);
+    await adapter.send(
+      {
+        conversationId: "c2c:owner",
+        senderId: "owner",
+        messageId: "incoming-id",
+        context: { messageType: "c2c", userOpenId: "owner" },
+      },
+      "给你图",
+      { attachments: [image] },
+    );
+
+    // token, text message, upload, media message
+    expect(calls).toHaveLength(4);
+    expect(calls[2]?.url).toBe(
+      "https://api.sgroup.qq.com/v2/users/owner/files",
+    );
+    expect(JSON.parse(String(calls[2]?.init?.body))).toMatchObject({
+      file_type: 1,
+      srv_send_msg: false,
+      file_data: Buffer.from("89504e470d0a1a0a", "hex").toString("base64"),
+    });
+    expect(calls[3]?.url).toBe(
+      "https://api.sgroup.qq.com/v2/users/owner/messages",
+    );
+    expect(JSON.parse(String(calls[3]?.init?.body))).toMatchObject({
+      msg_type: 7,
+      media: { file_info: "handle-1" },
+      msg_id: "incoming-id",
+      // A fresh sequence, so QQ does not treat it as a repeat of the text.
+      msg_seq: 2,
+    });
+  });
+
+  it("sends an attachment-only reply without an empty text message", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal("fetch", stubApi(calls, { file_info: "handle-2" }));
+    const report = join(await tempDirectory(), "report.pdf");
+    await writeFile(report, "%PDF-1.4");
+
+    const adapter = new QQBotAdapter(qqConfig(), logger);
+    await adapter.send(
+      {
+        conversationId: "c2c:owner",
+        senderId: "owner",
+        context: { messageType: "c2c", userOpenId: "owner" },
+      },
+      "",
+      { attachments: [report] },
+    );
+
+    // token, upload, media message — no text message at all.
+    expect(calls).toHaveLength(3);
+    expect(calls.map((call) => call.url)).toEqual([
+      expect.stringContaining("getAppAccessToken"),
+      "https://api.sgroup.qq.com/v2/users/owner/files",
+      "https://api.sgroup.qq.com/v2/users/owner/messages",
+    ]);
+    expect(JSON.parse(String(calls[1]?.init?.body))).toMatchObject({
+      file_type: 4,
+    });
+  });
+
   it("acknowledges a QQ button callback and forwards its data", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(
@@ -171,4 +251,26 @@ function qqConfig(): QQBotConfig {
     shareGroupSession: false,
     markdown: true,
   };
+}
+
+function stubApi(
+  calls: Array<{ url: string; init?: RequestInit }>,
+  payload: Record<string, unknown>,
+): typeof fetch {
+  return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, ...(init ? { init } : {}) });
+    if (url.includes("getAppAccessToken"))
+      return new Response(
+        JSON.stringify({ access_token: "access", expires_in: "7200" }),
+        { status: 200 },
+      );
+    return new Response(JSON.stringify(payload), { status: 200 });
+  }) as unknown as typeof fetch;
+}
+
+async function tempDirectory(): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "ccrc-qq-"));
+  attachmentDirectories.push(directory);
+  return directory;
 }

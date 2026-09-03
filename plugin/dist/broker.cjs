@@ -3701,7 +3701,7 @@ var require_websocket_server = __commonJS({
 });
 
 // src/broker/main.ts
-var import_promises6 = require("node:fs/promises");
+var import_promises7 = require("node:fs/promises");
 
 // src/core/config.ts
 var import_promises = require("node:fs/promises");
@@ -7954,9 +7954,9 @@ async function readOrCreateBrokerToken(paths) {
 
 // src/broker/broker.ts
 var import_node_crypto3 = require("node:crypto");
-var import_promises5 = require("node:fs/promises");
+var import_promises6 = require("node:fs/promises");
 var import_node_http = require("node:http");
-var import_node_path3 = require("node:path");
+var import_node_path4 = require("node:path");
 
 // node_modules/ws/wrapper.mjs
 var import_stream = __toESM(require_stream(), 1);
@@ -7989,7 +7989,8 @@ var clientMessageSchema = external_exports.discriminatedUnion("type", [
     type: external_exports.literal("reply"),
     correlationId: external_exports.string().min(1),
     routeId: external_exports.string().min(1),
-    text: external_exports.string().min(1)
+    text: external_exports.string(),
+    attachments: external_exports.array(external_exports.string().min(1)).max(9).optional()
   }),
   external_exports.object({
     type: external_exports.literal("permission_request"),
@@ -8160,11 +8161,14 @@ async function pruneAttachments(directory, logger) {
 }
 
 // src/platforms/qqbot.ts
+var import_promises4 = require("node:fs/promises");
+var import_node_path3 = require("node:path");
 var TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken";
 var API_PRODUCTION = "https://api.sgroup.qq.com";
 var API_SANDBOX = "https://sandbox.api.sgroup.qq.com";
 var TOKEN_REFRESH_MARGIN_MS = 5 * 6e4;
 var MAX_MESSAGE_CODEPOINTS = 1900;
+var MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 var MAX_RECONNECT_DELAY_MS = 6e4;
 var OLD_MESSAGE_MS = 10 * 6e4;
 var OP_DISPATCH = 0;
@@ -8218,11 +8222,11 @@ var QQBotAdapter = class {
   }
   async send(target, text, options) {
     const messageType = target.context.messageType;
-    const destination = messageType === "group" ? `/v2/groups/${encodeURIComponent(target.context.groupOpenId ?? "")}/messages` : `/v2/users/${encodeURIComponent(target.context.userOpenId ?? "")}/messages`;
+    const destination = messageType === "group" ? `/v2/groups/${encodeURIComponent(target.context.groupOpenId ?? "")}` : `/v2/users/${encodeURIComponent(target.context.userOpenId ?? "")}`;
     if (!target.context.groupOpenId && !target.context.userOpenId) {
       throw new Error("QQ reply target has no destination");
     }
-    const chunks = splitMessage(text, MAX_MESSAGE_CODEPOINTS);
+    const chunks = text.trim() ? splitMessage(text, MAX_MESSAGE_CODEPOINTS) : [];
     for (const [index, chunk] of chunks.entries()) {
       const body = this.config.markdown ? { markdown: { content: chunk }, msg_type: 2 } : { content: chunk, msg_type: 0 };
       if (options?.buttons && index === chunks.length - 1) {
@@ -8232,13 +8236,49 @@ var QQBotAdapter = class {
         body.msg_id = target.messageId;
         body.msg_seq = this.nextMessageSequence(target.messageId);
       }
-      await this.apiRequest("POST", destination, body);
+      await this.apiRequest("POST", `${destination}/messages`, body);
     }
+    const attachments = options?.attachments ?? [];
+    for (const attachment of attachments)
+      await this.sendAttachment(destination, target, attachment);
     this.logger.info("sent QQ reply", {
       messageType,
       conversationId: target.conversationId,
-      chunks: chunks.length
+      chunks: chunks.length,
+      ...attachments.length > 0 ? { attachments: attachments.length } : {}
     });
+  }
+  /**
+   * QQ takes rich media in two steps: upload the bytes for a `file_info`
+   * handle, then send a message that references it. `srv_send_msg: false`
+   * keeps the upload from posting a message of its own.
+   */
+  async sendAttachment(destination, target, path) {
+    const body = await (0, import_promises4.readFile)(path);
+    if (body.byteLength > MAX_UPLOAD_BYTES)
+      throw new Error(
+        `${(0, import_node_path3.basename)(path)} is ${body.byteLength} bytes, over QQ's ${MAX_UPLOAD_BYTES} limit`
+      );
+    const uploaded = await this.apiRequest(
+      "POST",
+      `${destination}/files`,
+      {
+        file_type: qqFileType(path),
+        file_data: body.toString("base64"),
+        srv_send_msg: false
+      }
+    );
+    if (!uploaded.file_info)
+      throw new Error(`QQ upload of ${(0, import_node_path3.basename)(path)} returned no file_info`);
+    const message = {
+      msg_type: 7,
+      media: { file_info: uploaded.file_info }
+    };
+    if (target.messageId) {
+      message.msg_id = target.messageId;
+      message.msg_seq = this.nextMessageSequence(target.messageId);
+    }
+    await this.apiRequest("POST", `${destination}/messages`, message);
   }
   get apiBase() {
     return this.config.sandbox ? API_SANDBOX : API_PRODUCTION;
@@ -8623,6 +8663,14 @@ var QQBotAdapter = class {
     return raw ? JSON.parse(raw) : {};
   }
 };
+function qqFileType(path) {
+  const extension2 = (0, import_node_path3.extname)(path).toLowerCase();
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"].includes(extension2))
+    return 1;
+  if ([".mp4", ".mov"].includes(extension2)) return 2;
+  if ([".silk", ".amr"].includes(extension2)) return 3;
+  return 4;
+}
 function stripAtMention(content) {
   return content.trim().replace(/^<@![^>]+>\s*/, "").trim();
 }
@@ -8808,7 +8856,7 @@ var SessionRegistry = class {
 };
 
 // src/broker/state-store.ts
-var import_promises4 = require("node:fs/promises");
+var import_promises5 = require("node:fs/promises");
 var EMPTY_STATE = {
   selections: {},
   aliases: {},
@@ -8817,7 +8865,7 @@ var EMPTY_STATE = {
 async function loadState(path) {
   try {
     const parsed = JSON.parse(
-      await (0, import_promises4.readFile)(path, "utf8")
+      await (0, import_promises5.readFile)(path, "utf8")
     );
     return {
       selections: isStringRecord(parsed.selections) ? parsed.selections : {},
@@ -8831,12 +8879,12 @@ async function loadState(path) {
 }
 async function saveState(path, state) {
   const temporary = `${path}.${process.pid}.tmp`;
-  await (0, import_promises4.writeFile)(temporary, `${JSON.stringify(state, null, 2)}
+  await (0, import_promises5.writeFile)(temporary, `${JSON.stringify(state, null, 2)}
 `, {
     mode: 384
   });
-  await (0, import_promises4.chmod)(temporary, 384).catch(() => void 0);
-  await (0, import_promises4.rename)(temporary, path);
+  await (0, import_promises5.chmod)(temporary, 384).catch(() => void 0);
+  await (0, import_promises5.rename)(temporary, path);
 }
 function parseOutputTargets(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -9001,7 +9049,7 @@ var Broker = class {
     );
     await new Promise((resolve) => this.server.close(() => resolve()));
     await this.stateWrite.catch(() => void 0);
-    await (0, import_promises5.unlink)(this.paths.pid).catch(() => void 0);
+    await (0, import_promises6.unlink)(this.paths.pid).catch(() => void 0);
     this.logger.info("broker stopped");
   }
   status() {
@@ -9115,7 +9163,11 @@ var Broker = class {
       const platform = this.platforms.get(route.platformId);
       if (!platform)
         throw new Error(`platform ${route.platformId} is unavailable`);
-      await platform.adapter.send(route.target, message.text);
+      await platform.adapter.send(
+        route.target,
+        message.text,
+        message.attachments ? { attachments: message.attachments } : void 0
+      );
       this.explicitReplies.set(sessionId, {
         text: message.text,
         sentAt: Date.now(),
@@ -10052,7 +10104,7 @@ function friendlySessionTitle(rawTitle, projectDir, sessionId) {
     const withoutGeneratedId = cleaned.endsWith(suffix) ? cleaned.slice(0, -suffix.length) : cleaned;
     if (withoutGeneratedId) return withoutGeneratedId;
   }
-  return projectDir ? (0, import_node_path3.basename)(projectDir) || "Claude \u4F1A\u8BDD" : "Claude \u4F1A\u8BDD";
+  return projectDir ? (0, import_node_path4.basename)(projectDir) || "Claude \u4F1A\u8BDD" : "Claude \u4F1A\u8BDD";
 }
 function escapeMarkdown(value) {
   return value.replace(/([\\`*_{}[\]()#+.!>|])/g, "\\$1");
@@ -10095,7 +10147,7 @@ async function main() {
   logger.info("configuration loaded", safeConfigSummary(config));
   const broker = new Broker(config, paths, token, logger);
   await broker.start();
-  await (0, import_promises6.writeFile)(paths.pid, `${process.pid}
+  await (0, import_promises7.writeFile)(paths.pid, `${process.pid}
 `, { mode: 384 });
   let stopping = false;
   const stop = async (signal) => {
@@ -10105,7 +10157,7 @@ async function main() {
     await broker.stop().catch(
       (error) => logger.error("broker shutdown failed", { error: String(error) })
     );
-    await (0, import_promises6.unlink)(paths.pid).catch(() => void 0);
+    await (0, import_promises7.unlink)(paths.pid).catch(() => void 0);
     process.exitCode = 0;
   };
   process.on("SIGINT", () => void stop("SIGINT"));

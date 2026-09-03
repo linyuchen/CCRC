@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { basename, extname } from "node:path";
 import WebSocket, { type RawData } from "ws";
 import type { QQBotConfig } from "../core/config.js";
 import type { Logger } from "../core/logger.js";
@@ -15,6 +17,7 @@ const API_PRODUCTION = "https://api.sgroup.qq.com";
 const API_SANDBOX = "https://sandbox.api.sgroup.qq.com";
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60_000;
 const MAX_MESSAGE_CODEPOINTS = 1_900;
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 const MAX_RECONNECT_DELAY_MS = 60_000;
 const OLD_MESSAGE_MS = 10 * 60_000;
 
@@ -128,14 +131,17 @@ export class QQBotAdapter implements PlatformAdapter {
     const messageType = target.context.messageType;
     const destination =
       messageType === "group"
-        ? `/v2/groups/${encodeURIComponent(target.context.groupOpenId ?? "")}/messages`
-        : `/v2/users/${encodeURIComponent(target.context.userOpenId ?? "")}/messages`;
+        ? `/v2/groups/${encodeURIComponent(target.context.groupOpenId ?? "")}`
+        : `/v2/users/${encodeURIComponent(target.context.userOpenId ?? "")}`;
 
     if (!target.context.groupOpenId && !target.context.userOpenId) {
       throw new Error("QQ reply target has no destination");
     }
 
-    const chunks = splitMessage(text, MAX_MESSAGE_CODEPOINTS);
+    // An attachment-only reply carries no text, so send nothing for the body.
+    const chunks = text.trim()
+      ? splitMessage(text, MAX_MESSAGE_CODEPOINTS)
+      : [];
     for (const [index, chunk] of chunks.entries()) {
       const body: Record<string, unknown> = this.config.markdown
         ? { markdown: { content: chunk }, msg_type: 2 }
@@ -147,13 +153,54 @@ export class QQBotAdapter implements PlatformAdapter {
         body.msg_id = target.messageId;
         body.msg_seq = this.nextMessageSequence(target.messageId);
       }
-      await this.apiRequest("POST", destination, body);
+      await this.apiRequest("POST", `${destination}/messages`, body);
     }
+    const attachments = options?.attachments ?? [];
+    for (const attachment of attachments)
+      await this.sendAttachment(destination, target, attachment);
     this.logger.info("sent QQ reply", {
       messageType,
       conversationId: target.conversationId,
       chunks: chunks.length,
+      ...(attachments.length > 0 ? { attachments: attachments.length } : {}),
     });
+  }
+
+  /**
+   * QQ takes rich media in two steps: upload the bytes for a `file_info`
+   * handle, then send a message that references it. `srv_send_msg: false`
+   * keeps the upload from posting a message of its own.
+   */
+  private async sendAttachment(
+    destination: string,
+    target: ReplyTarget,
+    path: string,
+  ): Promise<void> {
+    const body = await readFile(path);
+    if (body.byteLength > MAX_UPLOAD_BYTES)
+      throw new Error(
+        `${basename(path)} is ${body.byteLength} bytes, over QQ's ${MAX_UPLOAD_BYTES} limit`,
+      );
+    const uploaded = await this.apiRequest<{ file_info?: string }>(
+      "POST",
+      `${destination}/files`,
+      {
+        file_type: qqFileType(path),
+        file_data: body.toString("base64"),
+        srv_send_msg: false,
+      },
+    );
+    if (!uploaded.file_info)
+      throw new Error(`QQ upload of ${basename(path)} returned no file_info`);
+    const message: Record<string, unknown> = {
+      msg_type: 7,
+      media: { file_info: uploaded.file_info },
+    };
+    if (target.messageId) {
+      message.msg_id = target.messageId;
+      message.msg_seq = this.nextMessageSequence(target.messageId);
+    }
+    await this.apiRequest("POST", `${destination}/messages`, message);
   }
 
   private get apiBase(): string {
@@ -615,6 +662,16 @@ export class QQBotAdapter implements PlatformAdapter {
       );
     return (raw ? JSON.parse(raw) : {}) as T;
   }
+}
+
+/** QQ's rich-media kinds: 1 image, 2 video, 3 voice, 4 file. */
+function qqFileType(path: string): number {
+  const extension = extname(path).toLowerCase();
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"].includes(extension))
+    return 1;
+  if ([".mp4", ".mov"].includes(extension)) return 2;
+  if ([".silk", ".amr"].includes(extension)) return 3;
+  return 4;
 }
 
 function stripAtMention(content: string): string {

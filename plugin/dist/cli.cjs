@@ -8524,7 +8524,8 @@ var clientMessageSchema = external_exports.discriminatedUnion("type", [
     type: external_exports.literal("reply"),
     correlationId: external_exports.string().min(1),
     routeId: external_exports.string().min(1),
-    text: external_exports.string().min(1)
+    text: external_exports.string(),
+    attachments: external_exports.array(external_exports.string().min(1)).max(9).optional()
   }),
   external_exports.object({
     type: external_exports.literal("permission_request"),

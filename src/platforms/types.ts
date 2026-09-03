@@ -23,6 +23,8 @@ export interface MessageButton {
 
 export interface SendOptions {
   buttons?: MessageButton[][];
+  /** Absolute paths of local files to send alongside the text. */
+  attachments?: string[];
 }
 
 export interface InboundMessage {

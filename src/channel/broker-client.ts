@@ -78,9 +78,19 @@ export class BrokerClient {
     this.rejectPending(new Error("broker client stopped"));
   }
 
-  async reply(routeId: string, text: string): Promise<void> {
+  async reply(
+    routeId: string,
+    text: string,
+    attachments?: string[],
+  ): Promise<void> {
     const correlationId = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    return this.sendWithAck({ type: "reply", correlationId, routeId, text });
+    return this.sendWithAck({
+      type: "reply",
+      correlationId,
+      routeId,
+      text,
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
+    });
   }
 
   sendPermissionRequest(request: {

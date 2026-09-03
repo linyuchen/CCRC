@@ -378,7 +378,11 @@ export class Broker {
       const platform = this.platforms.get(route.platformId);
       if (!platform)
         throw new Error(`platform ${route.platformId} is unavailable`);
-      await platform.adapter.send(route.target, message.text);
+      await platform.adapter.send(
+        route.target,
+        message.text,
+        message.attachments ? { attachments: message.attachments } : undefined,
+      );
       this.explicitReplies.set(sessionId, {
         text: message.text,
         sentAt: Date.now(),

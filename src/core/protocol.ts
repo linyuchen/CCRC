@@ -23,7 +23,8 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("reply"),
     correlationId: z.string().min(1),
     routeId: z.string().min(1),
-    text: z.string().min(1),
+    text: z.string(),
+    attachments: z.array(z.string().min(1)).max(9).optional(),
   }),
   z.object({
     type: z.literal("permission_request"),

@@ -70,7 +70,7 @@ async function main(): Promise<void> {
       {
         name: "reply",
         description:
-          "Send an additional out-of-band message to the external conversation before the turn ends. Ordinary final responses are mirrored automatically.",
+          "Send an additional out-of-band message to the external conversation before the turn ends. Ordinary final responses are mirrored automatically. Use attachments to send images or files the user asked for; text may be omitted when sending attachments alone.",
         inputSchema: {
           type: "object",
           properties: {
@@ -79,8 +79,15 @@ async function main(): Promise<void> {
               description: "The exact route_id from the inbound channel event.",
             },
             text: { type: "string", description: "The response to send." },
+            attachments: {
+              type: "array",
+              items: { type: "string" },
+              maxItems: 9,
+              description:
+                "Absolute paths of local files to send. Images arrive as images; anything else as a file.",
+            },
           },
-          required: ["route_id", "text"],
+          required: ["route_id"],
           additionalProperties: false,
         },
       },
@@ -147,9 +154,18 @@ async function main(): Promise<void> {
   mcp.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (request.params.name === "reply") {
       const args = z
-        .object({ route_id: z.string().min(1), text: z.string().min(1) })
+        .object({
+          route_id: z.string().min(1),
+          text: z.string().default(""),
+          attachments: z.array(z.string().min(1)).max(9).optional(),
+        })
+        .refine(
+          (value) =>
+            value.text.trim() !== "" || (value.attachments?.length ?? 0) > 0,
+          { message: "reply needs text, attachments, or both" },
+        )
         .parse(request.params.arguments);
-      await brokerClient.reply(args.route_id, args.text);
+      await brokerClient.reply(args.route_id, args.text, args.attachments);
       return { content: [{ type: "text", text: "sent" }] };
     }
     if (request.params.name === "session_info") {

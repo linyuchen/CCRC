@@ -22248,7 +22248,8 @@ var clientMessageSchema = external_exports.discriminatedUnion("type", [
     type: external_exports.literal("reply"),
     correlationId: external_exports.string().min(1),
     routeId: external_exports.string().min(1),
-    text: external_exports.string().min(1)
+    text: external_exports.string(),
+    attachments: external_exports.array(external_exports.string().min(1)).max(9).optional()
   }),
   external_exports.object({
     type: external_exports.literal("permission_request"),
@@ -22373,9 +22374,15 @@ var BrokerClient = class {
       socket.close(1e3, "channel stopping");
     this.rejectPending(new Error("broker client stopped"));
   }
-  async reply(routeId, text) {
+  async reply(routeId, text, attachments) {
     const correlationId = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    return this.sendWithAck({ type: "reply", correlationId, routeId, text });
+    return this.sendWithAck({
+      type: "reply",
+      correlationId,
+      routeId,
+      text,
+      ...attachments && attachments.length > 0 ? { attachments } : {}
+    });
   }
   sendPermissionRequest(request) {
     this.send({ type: "permission_request", ...request });
@@ -22681,7 +22688,7 @@ async function main() {
     tools: [
       {
         name: "reply",
-        description: "Send an additional out-of-band message to the external conversation before the turn ends. Ordinary final responses are mirrored automatically.",
+        description: "Send an additional out-of-band message to the external conversation before the turn ends. Ordinary final responses are mirrored automatically. Use attachments to send images or files the user asked for; text may be omitted when sending attachments alone.",
         inputSchema: {
           type: "object",
           properties: {
@@ -22689,9 +22696,15 @@ async function main() {
               type: "string",
               description: "The exact route_id from the inbound channel event."
             },
-            text: { type: "string", description: "The response to send." }
+            text: { type: "string", description: "The response to send." },
+            attachments: {
+              type: "array",
+              items: { type: "string" },
+              maxItems: 9,
+              description: "Absolute paths of local files to send. Images arrive as images; anything else as a file."
+            }
           },
-          required: ["route_id", "text"],
+          required: ["route_id"],
           additionalProperties: false
         }
       },
@@ -22752,8 +22765,15 @@ async function main() {
   }));
   mcp.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (request.params.name === "reply") {
-      const args = external_exports.object({ route_id: external_exports.string().min(1), text: external_exports.string().min(1) }).parse(request.params.arguments);
-      await brokerClient.reply(args.route_id, args.text);
+      const args = external_exports.object({
+        route_id: external_exports.string().min(1),
+        text: external_exports.string().default(""),
+        attachments: external_exports.array(external_exports.string().min(1)).max(9).optional()
+      }).refine(
+        (value) => value.text.trim() !== "" || (value.attachments?.length ?? 0) > 0,
+        { message: "reply needs text, attachments, or both" }
+      ).parse(request.params.arguments);
+      await brokerClient.reply(args.route_id, args.text, args.attachments);
       return { content: [{ type: "text", text: "sent" }] };
     }
     if (request.params.name === "session_info") {
