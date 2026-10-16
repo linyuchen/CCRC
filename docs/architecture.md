@@ -31,17 +31,26 @@ output destination    -> persistent broadcast target for every connected Channel
 
 Selections, aliases, and output destinations survive Broker restarts. Short-lived reply routes do not.
 
+#### Multiple machines, one bot
+
+Each computer runs its own loopback Broker and its own platform connection, so a Broker's registry only ever holds that machine's sessions. To keep independent Brokers from colliding on `1`/`2`, every serial is prefixed with a per-Broker tag. The tag defaults to the machine's hostname and can be overridden with `CCRC_BROKER_TAG` (handy when a hostname is long); if the hostname is unusable it falls back to a stable 2-char hash. So `/session` yields `linyuchen1 linyuchen2` on one machine and `A1 A2` on another that set `CCRC_BROKER_TAG=A`, and selection buttons carry the tag in their callback data (`ccrc:session:<tag>:<id>`):
+
+- A button whose tag matches this Broker selects locally.
+- A button tagged for another machine makes this Broker _defer_ the conversation: it stops auto-forwarding plain messages (so a message never lands on two computers at once) and stays silent on `/current`, until the user picks a local session again.
+
+This needs the platform to deliver one chat message to every connected Broker; `/session` and `/list` intentionally answer from each machine so the user sees all of them.
+
 ### Platform adapter
 
 Adapters implement `PlatformAdapter` from `src/platforms/types.ts`:
 
 ```ts
 interface PlatformAdapter {
-  readonly id: string
-  readonly type: string
-  start(handler: InboundHandler): Promise<void>
-  stop(): Promise<void>
-  send(target: ReplyTarget, text: string, options?: SendOptions): Promise<void>
+  readonly id: string;
+  readonly type: string;
+  start(handler: InboundHandler): Promise<void>;
+  stop(): Promise<void>;
+  send(target: ReplyTarget, text: string, options?: SendOptions): Promise<void>;
 }
 ```
 

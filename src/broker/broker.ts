@@ -6,6 +6,7 @@ import {
   type Server as HttpServer,
   type ServerResponse,
 } from "node:http";
+import { hostname } from "node:os";
 import { basename } from "node:path";
 import WebSocket, { WebSocketServer } from "ws";
 import { z } from "zod";
@@ -144,6 +145,16 @@ export class Broker {
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private readonly pendingChoices = new Map<string, PendingChoice>();
   private readonly sessionDetails = new Map<string, SessionDetails>();
+  // Conversations this broker has handed to another machine: the user picked a
+  // session tagged for a different broker, so we stop auto-forwarding plain
+  // messages here (and stay quiet on /current) until they switch back.
+  private readonly deferredConversations = new Set<string>();
+  // Short per-machine code that prefixes every serial so independent brokers on
+  // different computers never collide on "1"/"2". All sessions on one broker
+  // share the local machine, so this is a broker-wide tag.
+  private readonly brokerTag: string;
+  private readonly hostName: string;
+  private readonly machineLabel: string;
   private stateWrite = Promise.resolve();
   private heartbeat: NodeJS.Timeout | undefined;
   private stopping = false;
@@ -162,6 +173,12 @@ export class Broker {
       noServer: true,
       maxPayload: 1_048_576,
     });
+    this.hostName = hostname();
+    this.brokerTag = computeBrokerTag(this.config.broker.tag, this.hostName);
+    this.machineLabel =
+      this.brokerTag === this.hostName
+        ? this.hostName
+        : `${this.brokerTag} · ${this.hostName}`;
   }
 
   async start(): Promise<void> {
@@ -635,6 +652,13 @@ export class Broker {
       if (handled) return;
     }
 
+    if (this.deferredConversations.has(conversationKey)) {
+      // Another machine owns this conversation's input target; it forwards the
+      // message. Staying silent here is what stops a plain message from landing
+      // on two computers at once.
+      return;
+    }
+
     const session = this.registry.selected(conversationKey);
     if (!session) {
       const online = this.registry.list();
@@ -686,11 +710,19 @@ export class Broker {
     conversationKey: string,
     destinationKey: string,
   ): Promise<void> {
-    const sessionSelection = /^ccrc:session:(.+)$/.exec(
+    const sessionSelection = /^ccrc:session:(?:([^:]+):)?(.+)$/.exec(
       message.interactionData ?? "",
     );
     if (sessionSelection) {
-      const sessionId = sessionSelection[1] ?? "";
+      const tag = sessionSelection[1];
+      const sessionId = sessionSelection[2] ?? "";
+      // A selection tagged for another machine: that broker owns it. Stand down
+      // for this conversation so our plain messages stop auto-routing to a lone
+      // local session, and stay silent so every other broker doesn't nag.
+      if (tag && tag !== this.brokerTag) {
+        this.deferredConversations.add(conversationKey);
+        return;
+      }
       const session = this.registry.select(conversationKey, sessionId);
       if (!session) {
         await this.sendSessionList(
@@ -701,10 +733,11 @@ export class Broker {
         );
         return;
       }
+      this.deferredConversations.delete(conversationKey);
       this.persistState();
       await adapter.send(
         message.replyTarget,
-        `已切换到 **${escapeMarkdown(this.sessionTitle(session.metadata.id))}**\n\n**目录：** \`${escapeMarkdownCode(session.metadata.projectDir)}\``,
+        `已切换到 **${escapeMarkdown(this.sessionTitle(session.metadata.id))}**（${escapeMarkdown(this.machineLabel)}）\n\n**目录：** \`${escapeMarkdownCode(session.metadata.projectDir)}\``,
       );
       return;
     }
@@ -837,6 +870,9 @@ export class Broker {
       return true;
     }
     if (command === "/current" || command === "/当前") {
+      // Deferred: another broker is the active input target for this chat, so
+      // let it answer and keep quiet to avoid a duplicate reply per machine.
+      if (this.deferredConversations.has(conversationKey)) return true;
       const session = this.registry.selected(conversationKey);
       await adapter.send(
         message.replyTarget,
@@ -881,6 +917,7 @@ export class Broker {
           "/session — 列出在线会话，点击序号按钮切换 QQ 输入目标",
           "/current — 当前会话",
           "/rename <名称> — 重命名当前会话",
+          `多台电脑：序号带本机前缀（本机为 ${this.brokerTag}，如 ${this.brokerTag}1），点哪台的按钮就切到哪台；前缀可用环境变量 CCRC_BROKER_TAG 自定义`,
           "所有 Claude 会话的阶段性文字和最终回复都会推送到这里，会话选择只影响 QQ 输入目标",
           "/help — 显示帮助",
           "",
@@ -914,9 +951,13 @@ export class Broker {
     const current = this.registry.selected(conversationKey)?.metadata.id;
     const lines = sessions.map((session, index) => {
       const marker = session.id === current ? "●" : "○";
-      return `${marker} ${index + 1}. **${escapeMarkdown(this.sessionTitle(session.id))}**\n   \`${escapeMarkdownCode(session.projectDir)}\``;
+      return `${marker} ${this.sessionCode(index)}. **${escapeMarkdown(this.sessionTitle(session.id))}**\n   \`${escapeMarkdownCode(session.projectDir)}\``;
     });
-    return `在线 Claude 会话：\n${lines.join("\n")}`;
+    return `在线 Claude 会话（${escapeMarkdown(this.machineLabel)}）：\n${lines.join("\n")}`;
+  }
+
+  private sessionCode(index: number): string {
+    return `${this.brokerTag}${index + 1}`;
   }
 
   private sessionButtons(conversationKey: string): MessageButton[][] {
@@ -926,13 +967,13 @@ export class Broker {
     for (let offset = 0; offset < sessions.length; offset += 5) {
       rows.push(
         sessions.slice(offset, offset + 5).map((session, index) => {
-          const sequence = String(offset + index + 1);
+          const code = this.sessionCode(offset + index);
           return {
-            id: `session-${sequence}`,
-            label: sequence,
-            visitedLabel: sequence,
+            id: `session-${code}`,
+            label: code,
+            visitedLabel: code,
             style: session.id === current ? 1 : 0,
-            data: `ccrc:session:${session.id}`,
+            data: `ccrc:session:${this.brokerTag}:${session.id}`,
           };
         }),
       );
@@ -1510,6 +1551,25 @@ function friendlySessionTitle(
     if (withoutGeneratedId) return withoutGeneratedId;
   }
   return projectDir ? basename(projectDir) || "Claude 会话" : "Claude 会话";
+}
+
+function computeBrokerTag(explicit: string | undefined, host: string): string {
+  // Keep hyphens/dots/underscores so hostnames like "linyuchen" or
+  // "desktop-pc" survive intact; only strip what breaks the callback-data
+  // parser (":") or button rendering (whitespace). Cap length so a very long
+  // hostname does not blow out the QQ button label.
+  const sanitize = (value: string): string =>
+    value.replace(/[\s:]+/g, "").slice(0, 24);
+  const chosen = sanitize(explicit?.trim() ?? "");
+  if (chosen) return chosen;
+  const fromHost = sanitize(host);
+  if (fromHost) return fromHost;
+  // Hostname unusable (empty/all-stripped): fall back to a stable 2-char code
+  // so serials still never read as a bare "1".
+  let hash = 0;
+  for (const char of host)
+    hash = (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0;
+  return hash.toString(36).toUpperCase().padStart(2, "0").slice(-2);
 }
 
 function escapeMarkdown(value: string): string {

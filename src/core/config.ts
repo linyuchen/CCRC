@@ -31,6 +31,7 @@ const configSchema = z
         port: z.number().int().min(1024).max(65535).default(43921),
         autoStart: z.boolean().default(true),
         mirrorLocalReplies: z.boolean().default(true),
+        tag: z.string().trim().max(16).optional(),
       })
       .default({}),
     platforms: z.array(z.discriminatedUnion("type", [qqBotSchema])).default([]),
@@ -81,6 +82,8 @@ function mergeEnvironment(
       : {};
   const port = cleanEnvironmentValue(env.CCRC_BROKER_PORT);
   if (port) broker.port = Number(port);
+  const tag = cleanEnvironmentValue(env.CCRC_BROKER_TAG);
+  if (tag) broker.tag = tag;
   record.broker = broker;
 
   const appId = cleanEnvironmentValue(env.CCRC_QQ_APP_ID);

@@ -146,16 +146,16 @@ describe("Broker", () => {
 
     await fixture.platform.emit(externalMessage("/session", "message-list"));
     const sessionList = fixture.platform.sent.at(-1);
-    expect(sessionList?.text).toContain("1. **a-session-a**");
-    expect(sessionList?.text).toContain("2. **b-session-b**");
+    expect(sessionList?.text).toContain("A1. **a-session-a**");
+    expect(sessionList?.text).toContain("A2. **b-session-b**");
     expect(sessionList?.options?.buttons?.flat()).toMatchObject([
-      { label: "1", data: "ccrc:session:session-a" },
-      { label: "2", data: "ccrc:session:session-b" },
+      { label: "A1", data: "ccrc:session:A:session-a" },
+      { label: "A2", data: "ccrc:session:A:session-b" },
     ]);
 
     await fixture.platform.emit({
       ...externalMessage("", "session-button-2"),
-      interactionData: "ccrc:session:session-b",
+      interactionData: "ccrc:session:A:session-b",
     });
     expect(fixture.platform.sent.at(-1)?.text).toContain(
       "已切换到 **b-session-b**",
@@ -545,7 +545,7 @@ describe("Broker", () => {
     await fixture.platform.emit(externalMessage("/session"));
     await fixture.platform.emit({
       ...externalMessage("", "session-button-2"),
-      interactionData: "ccrc:session:session-b",
+      interactionData: "ccrc:session:A:session-b",
     });
 
     first.send(
@@ -609,6 +609,7 @@ async function createFixture(): Promise<{
       port,
       autoStart: false,
       mirrorLocalReplies: true,
+      tag: "A",
     },
     platforms: [
       {

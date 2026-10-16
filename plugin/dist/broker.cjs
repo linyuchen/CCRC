@@ -7766,7 +7766,8 @@ var configSchema = external_exports.object({
     host: external_exports.literal("127.0.0.1").default("127.0.0.1"),
     port: external_exports.number().int().min(1024).max(65535).default(43921),
     autoStart: external_exports.boolean().default(true),
-    mirrorLocalReplies: external_exports.boolean().default(true)
+    mirrorLocalReplies: external_exports.boolean().default(true),
+    tag: external_exports.string().trim().max(16).optional()
   }).default({}),
   platforms: external_exports.array(external_exports.discriminatedUnion("type", [qqBotSchema])).default([])
 }).superRefine((config, context) => {
@@ -7798,6 +7799,8 @@ function mergeEnvironment(fileConfig, env) {
   const broker = record.broker && typeof record.broker === "object" ? record.broker : {};
   const port = cleanEnvironmentValue(env.CCRC_BROKER_PORT);
   if (port) broker.port = Number(port);
+  const tag = cleanEnvironmentValue(env.CCRC_BROKER_TAG);
+  if (tag) broker.tag = tag;
   record.broker = broker;
   const appId = cleanEnvironmentValue(env.CCRC_QQ_APP_ID);
   const appSecret = cleanEnvironmentValue(env.CCRC_QQ_APP_SECRET);
@@ -7956,6 +7959,7 @@ async function readOrCreateBrokerToken(paths) {
 var import_node_crypto3 = require("node:crypto");
 var import_promises6 = require("node:fs/promises");
 var import_node_http = require("node:http");
+var import_node_os2 = require("node:os");
 var import_node_path4 = require("node:path");
 
 // node_modules/ws/wrapper.mjs
@@ -8383,12 +8387,16 @@ var QQBotAdapter = class {
           resolve();
           return;
         }
-        if (payload.t === "GROUP_AT_MESSAGE_CREATE") {
+        if (payload.t === "GROUP_AT_MESSAGE_CREATE" || payload.t === "GROUP_MESSAGE_CREATE") {
           void this.handleGroupMessage(payload.d);
         } else if (payload.t === "C2C_MESSAGE_CREATE") {
           void this.handleC2CMessage(payload.d);
         } else if (payload.t === "INTERACTION_CREATE") {
           void this.handleInteraction(payload.d);
+        } else {
+          this.logger.info("ignored QQ gateway dispatch", {
+            event: payload.t
+          });
         }
       });
       socket.once("error", (error) => {
@@ -8463,7 +8471,14 @@ var QQBotAdapter = class {
     const messageId = event.id?.trim();
     const groupOpenId = event.group_openid?.trim();
     const senderId = event.author?.member_openid?.trim();
-    if (!messageId || !groupOpenId || !senderId) return;
+    if (!messageId || !groupOpenId || !senderId) {
+      this.logger.warn("dropped QQ group message with missing fields", {
+        hasMessageId: Boolean(messageId),
+        hasGroupOpenId: Boolean(groupOpenId),
+        hasSenderId: Boolean(senderId)
+      });
+      return;
+    }
     this.logger.info("received QQ message", {
       eventType: "group",
       messageId,
@@ -8964,6 +8979,9 @@ var Broker = class {
       noServer: true,
       maxPayload: 1048576
     });
+    this.hostName = (0, import_node_os2.hostname)();
+    this.brokerTag = computeBrokerTag(this.config.broker.tag, this.hostName);
+    this.machineLabel = this.brokerTag === this.hostName ? this.hostName : `${this.brokerTag} \xB7 ${this.hostName}`;
   }
   server;
   websocketServer;
@@ -8976,6 +8994,16 @@ var Broker = class {
   pendingPermissions = /* @__PURE__ */ new Map();
   pendingChoices = /* @__PURE__ */ new Map();
   sessionDetails = /* @__PURE__ */ new Map();
+  // Conversations this broker has handed to another machine: the user picked a
+  // session tagged for a different broker, so we stop auto-forwarding plain
+  // messages here (and stay quiet on /current) until they switch back.
+  deferredConversations = /* @__PURE__ */ new Set();
+  // Short per-machine code that prefixes every serial so independent brokers on
+  // different computers never collide on "1"/"2". All sessions on one broker
+  // share the local machine, so this is a broker-wide tag.
+  brokerTag;
+  hostName;
+  machineLabel;
   stateWrite = Promise.resolve();
   heartbeat;
   stopping = false;
@@ -9392,6 +9420,9 @@ ${detail}${multiSelectHelp}`
       );
       if (handled) return;
     }
+    if (this.deferredConversations.has(conversationKey)) {
+      return;
+    }
     const session = this.registry.selected(conversationKey);
     if (!session) {
       const online = this.registry.list();
@@ -9433,11 +9464,16 @@ ${detail}${multiSelectHelp}`
       );
   }
   async handleButtonInteraction(adapter, message, conversationKey, destinationKey) {
-    const sessionSelection = /^ccrc:session:(.+)$/.exec(
+    const sessionSelection = /^ccrc:session:(?:([^:]+):)?(.+)$/.exec(
       message.interactionData ?? ""
     );
     if (sessionSelection) {
-      const sessionId = sessionSelection[1] ?? "";
+      const tag = sessionSelection[1];
+      const sessionId = sessionSelection[2] ?? "";
+      if (tag && tag !== this.brokerTag) {
+        this.deferredConversations.add(conversationKey);
+        return;
+      }
       const session = this.registry.select(conversationKey, sessionId);
       if (!session) {
         await this.sendSessionList(
@@ -9448,10 +9484,11 @@ ${detail}${multiSelectHelp}`
         );
         return;
       }
+      this.deferredConversations.delete(conversationKey);
       this.persistState();
       await adapter.send(
         message.replyTarget,
-        `\u5DF2\u5207\u6362\u5230 **${escapeMarkdown(this.sessionTitle(session.metadata.id))}**
+        `\u5DF2\u5207\u6362\u5230 **${escapeMarkdown(this.sessionTitle(session.metadata.id))}**\uFF08${escapeMarkdown(this.machineLabel)}\uFF09
 
 **\u76EE\u5F55\uFF1A** \`${escapeMarkdownCode(session.metadata.projectDir)}\``
       );
@@ -9573,6 +9610,7 @@ ${detail}${multiSelectHelp}`
       return true;
     }
     if (command === "/current" || command === "/\u5F53\u524D") {
+      if (this.deferredConversations.has(conversationKey)) return true;
       const session = this.registry.selected(conversationKey);
       await adapter.send(
         message.replyTarget,
@@ -9617,6 +9655,7 @@ ${detail}${multiSelectHelp}`
           "/session \u2014 \u5217\u51FA\u5728\u7EBF\u4F1A\u8BDD\uFF0C\u70B9\u51FB\u5E8F\u53F7\u6309\u94AE\u5207\u6362 QQ \u8F93\u5165\u76EE\u6807",
           "/current \u2014 \u5F53\u524D\u4F1A\u8BDD",
           "/rename <\u540D\u79F0> \u2014 \u91CD\u547D\u540D\u5F53\u524D\u4F1A\u8BDD",
+          `\u591A\u53F0\u7535\u8111\uFF1A\u5E8F\u53F7\u5E26\u672C\u673A\u524D\u7F00\uFF08\u672C\u673A\u4E3A ${this.brokerTag}\uFF0C\u5982 ${this.brokerTag}1\uFF09\uFF0C\u70B9\u54EA\u53F0\u7684\u6309\u94AE\u5C31\u5207\u5230\u54EA\u53F0\uFF1B\u524D\u7F00\u53EF\u7528\u73AF\u5883\u53D8\u91CF CCRC_BROKER_TAG \u81EA\u5B9A\u4E49`,
           "\u6240\u6709 Claude \u4F1A\u8BDD\u7684\u9636\u6BB5\u6027\u6587\u5B57\u548C\u6700\u7EC8\u56DE\u590D\u90FD\u4F1A\u63A8\u9001\u5230\u8FD9\u91CC\uFF0C\u4F1A\u8BDD\u9009\u62E9\u53EA\u5F71\u54CD QQ \u8F93\u5165\u76EE\u6807",
           "/help \u2014 \u663E\u793A\u5E2E\u52A9",
           "",
@@ -9641,11 +9680,14 @@ ${detail}${multiSelectHelp}`
     const current = this.registry.selected(conversationKey)?.metadata.id;
     const lines = sessions.map((session, index) => {
       const marker = session.id === current ? "\u25CF" : "\u25CB";
-      return `${marker} ${index + 1}. **${escapeMarkdown(this.sessionTitle(session.id))}**
+      return `${marker} ${this.sessionCode(index)}. **${escapeMarkdown(this.sessionTitle(session.id))}**
    \`${escapeMarkdownCode(session.projectDir)}\``;
     });
-    return `\u5728\u7EBF Claude \u4F1A\u8BDD\uFF1A
+    return `\u5728\u7EBF Claude \u4F1A\u8BDD\uFF08${escapeMarkdown(this.machineLabel)}\uFF09\uFF1A
 ${lines.join("\n")}`;
+  }
+  sessionCode(index) {
+    return `${this.brokerTag}${index + 1}`;
   }
   sessionButtons(conversationKey) {
     const sessions = this.registry.list().slice(0, 25);
@@ -9654,13 +9696,13 @@ ${lines.join("\n")}`;
     for (let offset = 0; offset < sessions.length; offset += 5) {
       rows.push(
         sessions.slice(offset, offset + 5).map((session, index) => {
-          const sequence = String(offset + index + 1);
+          const code = this.sessionCode(offset + index);
           return {
-            id: `session-${sequence}`,
-            label: sequence,
-            visitedLabel: sequence,
+            id: `session-${code}`,
+            label: code,
+            visitedLabel: code,
             style: session.id === current ? 1 : 0,
-            data: `ccrc:session:${session.id}`
+            data: `ccrc:session:${this.brokerTag}:${session.id}`
           };
         })
       );
@@ -10110,6 +10152,17 @@ function friendlySessionTitle(rawTitle, projectDir, sessionId) {
     if (withoutGeneratedId) return withoutGeneratedId;
   }
   return projectDir ? (0, import_node_path4.basename)(projectDir) || "Claude \u4F1A\u8BDD" : "Claude \u4F1A\u8BDD";
+}
+function computeBrokerTag(explicit, host) {
+  const sanitize = (value) => value.replace(/[\s:]+/g, "").slice(0, 24);
+  const chosen = sanitize(explicit?.trim() ?? "");
+  if (chosen) return chosen;
+  const fromHost = sanitize(host);
+  if (fromHost) return fromHost;
+  let hash = 0;
+  for (const char of host)
+    hash = Math.imul(hash, 31) + char.charCodeAt(0) >>> 0;
+  return hash.toString(36).toUpperCase().padStart(2, "0").slice(-2);
 }
 function escapeMarkdown(value) {
   return value.replace(/([\\`*_{}[\]()#+.!>|])/g, "\\$1");

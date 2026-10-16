@@ -4069,7 +4069,8 @@ var configSchema = external_exports.object({
     host: external_exports.literal("127.0.0.1").default("127.0.0.1"),
     port: external_exports.number().int().min(1024).max(65535).default(43921),
     autoStart: external_exports.boolean().default(true),
-    mirrorLocalReplies: external_exports.boolean().default(true)
+    mirrorLocalReplies: external_exports.boolean().default(true),
+    tag: external_exports.string().trim().max(16).optional()
   }).default({}),
   platforms: external_exports.array(external_exports.discriminatedUnion("type", [qqBotSchema])).default([])
 }).superRefine((config, context) => {
@@ -4101,6 +4102,8 @@ function mergeEnvironment(fileConfig, env) {
   const broker = record.broker && typeof record.broker === "object" ? record.broker : {};
   const port = cleanEnvironmentValue(env.CCRC_BROKER_PORT);
   if (port) broker.port = Number(port);
+  const tag = cleanEnvironmentValue(env.CCRC_BROKER_TAG);
+  if (tag) broker.tag = tag;
   record.broker = broker;
   const appId = cleanEnvironmentValue(env.CCRC_QQ_APP_ID);
   const appSecret = cleanEnvironmentValue(env.CCRC_QQ_APP_SECRET);
