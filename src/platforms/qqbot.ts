@@ -321,12 +321,24 @@ export class QQBotAdapter implements PlatformAdapter {
           return;
         }
 
-        if (payload.t === "GROUP_AT_MESSAGE_CREATE") {
+        // GROUP_MESSAGE_CREATE carries every group message, not just the ones
+        // that @ the bot, so a bot granted that capability never emits
+        // GROUP_AT_MESSAGE_CREATE. Gate it with allowedConversations.
+        if (
+          payload.t === "GROUP_AT_MESSAGE_CREATE" ||
+          payload.t === "GROUP_MESSAGE_CREATE"
+        ) {
           void this.handleGroupMessage(payload.d as GroupMessageEvent);
         } else if (payload.t === "C2C_MESSAGE_CREATE") {
           void this.handleC2CMessage(payload.d as C2CMessageEvent);
         } else if (payload.t === "INTERACTION_CREATE") {
           void this.handleInteraction(payload.d as InteractionEvent);
+        } else {
+          // Logged at info, not debug: an unhandled event name used to vanish
+          // without a trace, which is how GROUP_MESSAGE_CREATE went unnoticed.
+          this.logger.info("ignored QQ gateway dispatch", {
+            event: payload.t,
+          });
         }
       });
 
@@ -408,7 +420,14 @@ export class QQBotAdapter implements PlatformAdapter {
     const messageId = event.id?.trim();
     const groupOpenId = event.group_openid?.trim();
     const senderId = event.author?.member_openid?.trim();
-    if (!messageId || !groupOpenId || !senderId) return;
+    if (!messageId || !groupOpenId || !senderId) {
+      this.logger.warn("dropped QQ group message with missing fields", {
+        hasMessageId: Boolean(messageId),
+        hasGroupOpenId: Boolean(groupOpenId),
+        hasSenderId: Boolean(senderId),
+      });
+      return;
+    }
     this.logger.info("received QQ message", {
       eventType: "group",
       messageId,
