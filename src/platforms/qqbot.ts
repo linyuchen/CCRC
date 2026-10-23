@@ -760,7 +760,9 @@ function qqKeyboard(buttonRows: NonNullable<SendOptions["buttons"]>): object {
             permission: { type: 2 },
             click_limit: 1,
           },
-          group_id: "ccrc-choice",
+          // QQ: "同一分组内有一个按钮操作后, 其它按钮则变灰不可点击"
+          // https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages.post.html
+          ...(button.group ? { group_id: button.group } : {}),
         })),
       })),
     },

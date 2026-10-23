@@ -74,6 +74,7 @@ describe("splitMessage", () => {
               id: "allow-abcde",
               label: "允许",
               visitedLabel: "已允许",
+              group: "ccrc-choice",
               data: "ccrc:permission:allow:abcde",
             },
           ],
@@ -118,6 +119,45 @@ describe("splitMessage", () => {
         },
       },
     });
+  });
+
+  it("keeps ungrouped buttons out of a QQ button group", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal("fetch", stubApi(calls, { id: "reply-id" }));
+
+    const adapter = new QQBotAdapter(qqConfig(), logger);
+    await adapter.send(
+      {
+        conversationId: "c2c:owner",
+        senderId: "owner",
+        context: { messageType: "c2c", userOpenId: "owner" },
+      },
+      "可多选",
+      {
+        buttons: [
+          [
+            { id: "choice-0", label: "A", data: "ccrc:choice:r:0" },
+            { id: "choice-1", label: "B", data: "ccrc:choice:r:1" },
+          ],
+          [
+            {
+              id: "choice-done",
+              label: "完成选择",
+              data: "ccrc:choice:r:done",
+            },
+          ],
+        ],
+      },
+    );
+
+    // QQ greys out the rest of a group once one button is used, which would
+    // leave "完成选择" unclickable after the first pick.
+    const body = JSON.parse(String(calls[1]?.init?.body)) as {
+      keyboard: { content: { rows: Array<{ buttons: object[] }> } };
+    };
+    const buttons = body.keyboard.content.rows.flatMap((row) => row.buttons);
+    expect(buttons).toHaveLength(3);
+    for (const button of buttons) expect(button).not.toHaveProperty("group_id");
   });
 
   it("uploads an attachment for a file_info handle, then sends it as media", async () => {

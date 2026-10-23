@@ -96,5 +96,6 @@ The protocol has an explicit integer version. Additive fields are preferred; bum
 - Session selection affects inbound routing only. It never filters outbound response broadcasts.
 - Permission, native `AskUserQuestion`, and compatibility `ask_user` prompts are also broadcast to the registered output destinations; the first valid response wins.
 - QQ renders outgoing text as Markdown and attaches callback keyboards for permissions and choices.
+- Single-answer keyboards (permissions, session picks, single-select choices) share a QQ `group_id`, so the first click greys out the rest. Multi-select keyboards omit it: a shared group would lock the remaining options and “完成选择” after the first pick.
 - Route IDs expire after 24 hours; permission requests expire after 30 minutes.
 - Broker restart preserves session selections but invalidates in-flight reply routes and permissions.

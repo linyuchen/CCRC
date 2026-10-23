@@ -8742,7 +8742,9 @@ function qqKeyboard(buttonRows) {
             permission: { type: 2 },
             click_limit: 1
           },
-          group_id: "ccrc-choice"
+          // QQ: "同一分组内有一个按钮操作后, 其它按钮则变灰不可点击"
+          // https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages.post.html
+          ...button.group ? { group_id: button.group } : {}
         }))
       }))
     }
@@ -8934,6 +8936,7 @@ var PERMISSION_REPLY = /^\s*(y|yes|allow|允许|n|no|deny|拒绝)\s+([a-km-z]{5}
 var ROUTE_TTL_MS = 24 * 60 * 6e4;
 var PERMISSION_TTL_MS = 30 * 6e4;
 var CHOICE_TTL_MS = 30 * 6e4;
+var SINGLE_USE_BUTTONS = "ccrc-choice";
 var REPLY_DEDUPE_MS = 6e4;
 var HOOK_BODY_LIMIT = 2 * 1024 * 1024;
 var assistantResponseSchema = external_exports.object({
@@ -9239,6 +9242,7 @@ var Broker = class {
           label: "\u5141\u8BB8",
           visitedLabel: "\u5DF2\u5141\u8BB8",
           style: 1,
+          group: SINGLE_USE_BUTTONS,
           data: `ccrc:permission:allow:${message.requestId}`
         },
         {
@@ -9246,6 +9250,7 @@ var Broker = class {
           label: "\u62D2\u7EDD",
           visitedLabel: "\u5DF2\u62D2\u7EDD",
           style: 0,
+          group: SINGLE_USE_BUTTONS,
           data: `ccrc:permission:deny:${message.requestId}`
         }
       ]
@@ -9310,6 +9315,9 @@ var Broker = class {
             label: compactButtonLabel(option.label),
             visitedLabel: compactButtonLabel(`\u5DF2\u9009\xB7${option.label}`),
             style: 1,
+            // Multi-select options and "完成选择" must stay clickable after
+            // the first pick, so only a single-select keyboard is single-use.
+            ...input.multiSelect ? {} : { group: SINGLE_USE_BUTTONS },
             data: `ccrc:choice:${input.requestId}:${selectedIndex}`
           };
         })
@@ -9702,6 +9710,7 @@ ${lines.join("\n")}`;
             label: code,
             visitedLabel: code,
             style: session.id === current ? 1 : 0,
+            group: SINGLE_USE_BUTTONS,
             data: `ccrc:session:${this.brokerTag}:${session.id}`
           };
         })

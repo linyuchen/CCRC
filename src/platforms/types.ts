@@ -19,6 +19,8 @@ export interface MessageButton {
   data: string;
   visitedLabel?: string;
   style?: 0 | 1;
+  /** Buttons sharing a group are single-use: using one disables the rest. */
+  group?: string;
 }
 
 export interface SendOptions {

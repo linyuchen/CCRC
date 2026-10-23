@@ -402,6 +402,7 @@ describe("Broker", () => {
       ?.flat()
       .find((button) => button.data.endsWith(":1"));
     expect(languageButton?.label).toBe("JavaScript/…");
+    expect(languageButton?.group).toBe("ccrc-choice");
     if (!languageButton) throw new Error("language button was not rendered");
 
     await fixture.platform.emit({
@@ -430,6 +431,8 @@ describe("Broker", () => {
     );
     if (!markdownButton || !codeButton || !doneButton)
       throw new Error("multi-select buttons were not rendered");
+    // A grouped multi-select keyboard locks itself after the first pick on QQ.
+    expect(secondButtons.filter((button) => button.group)).toEqual([]);
 
     await fixture.platform.emit({
       ...externalMessage("", "native-choice-2"),

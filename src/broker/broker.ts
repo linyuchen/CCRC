@@ -98,6 +98,7 @@ const PERMISSION_REPLY =
 const ROUTE_TTL_MS = 24 * 60 * 60_000;
 const PERMISSION_TTL_MS = 30 * 60_000;
 const CHOICE_TTL_MS = 30 * 60_000;
+const SINGLE_USE_BUTTONS = "ccrc-choice";
 const REPLY_DEDUPE_MS = 60_000;
 const HOOK_BODY_LIMIT = 2 * 1024 * 1024;
 const assistantResponseSchema = z.object({
@@ -444,6 +445,7 @@ export class Broker {
           label: "允许",
           visitedLabel: "已允许",
           style: 1,
+          group: SINGLE_USE_BUTTONS,
           data: `ccrc:permission:allow:${message.requestId}`,
         },
         {
@@ -451,6 +453,7 @@ export class Broker {
           label: "拒绝",
           visitedLabel: "已拒绝",
           style: 0,
+          group: SINGLE_USE_BUTTONS,
           data: `ccrc:permission:deny:${message.requestId}`,
         },
       ],
@@ -530,6 +533,9 @@ export class Broker {
             label: compactButtonLabel(option.label),
             visitedLabel: compactButtonLabel(`已选·${option.label}`),
             style: 1,
+            // Multi-select options and "完成选择" must stay clickable after
+            // the first pick, so only a single-select keyboard is single-use.
+            ...(input.multiSelect ? {} : { group: SINGLE_USE_BUTTONS }),
             data: `ccrc:choice:${input.requestId}:${selectedIndex}`,
           };
         }),
@@ -973,6 +979,7 @@ export class Broker {
             label: code,
             visitedLabel: code,
             style: session.id === current ? 1 : 0,
+            group: SINGLE_USE_BUTTONS,
             data: `ccrc:session:${this.brokerTag}:${session.id}`,
           };
         }),
